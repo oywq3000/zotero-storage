@@ -1,0 +1,1201 @@
+第48卷 第5期
+2025 年 5 月
+计算机学报
+CHINESEJOURNAL OFCOMPUTERS
+Vol.48 No.5 May2025
+收稿日期:2024-08-08;在线发布日期:2025-02-26。本课题得到国家自然科学基金项目(No.62376260)资 助。 张 绍 磊,博 士 研 究 生,主 要
+研究领域为自然语言处理、实时翻译和大语言模型。E-mail:zhangshaolei20z@ict.ac.cn。 冯 洋(通 信 作 者),博 士,研 究 员,博 士 生 导 师,
+中 国 计 算 机 学 会 (CCF)杰 出 会 员 ,主 要 研 究 领 域 为 自 然 语 言 处 理 和 大 语 言 模 型 。E-mail:fengyang@ict.ac.cn。
+基于连接时序分类解码器的实时语音翻译方法
+张绍磊1),3) 冯 洋1),2),3)
+1)(中国科学院计算技术研究所智能信息处理重点实验室 北京 100190)
+2)(中国科学院智能算法安全重点实验室 北京 100190)
+3)(中国科学院大学 北京 100049)
+摘 要 实时场景中的跨语言沟通是全球化进程中的重要场景。实时语音翻译旨在通过计算机在说话者讲话的
+同时输出目标语言的翻译文本,在诸多实时场景中 具 有 广 泛 的 应 用 前 景。 当 前 的 离 线 模 型 尽 管 拥 有 大 规 模 参 数,
+但其架构仍无法直接处理实时跨语言沟通场景。在此背景下,实时语音翻译对于 实 时 性 的 独 有 要 求 使 得 其 在 研 究
+和应用上具备特定的必要性。与离线语音翻译相比,实时语音翻译更具挑战 性,因 为 其 需 要 额 外 制 定 读/写 策 略 以
+控制模型在合适的时机开始翻译,从而在低延时下 获 得 高 质 量 翻 译。 理 想 情 况 下,实 时 语 音 翻 译 模 型 应 在 接 收 到
+相关语音后立即生成对应的目标文本,以确保高翻 译 质 量 和 低 延 时。 因 此,建 模 源 语 音 和 目 标 文 本 之 间 的 对 齐 是
+指导读/写策略的关键。基于此,本文提出了一种 基 于 连 接 时 序 分 类 解 码 器 的 实 时 语 音 翻 译 方 法。 该 方 法 通 过 连
+接时序分类技术插入空白标记和重复标记,实现语音和文本不等长序列间的 对 齐,并 根 据 此 对 齐 制 定 读/写 策 略 来
+控制模型在接收到对应的语音之后开始翻译。在训练中引入连接时序分类损失能有效地将对齐学习与目标文本
+生成整合在统一的框架中,从而找到最佳的读/写策 略。 本 文 在 两 个 实 时 语 音 翻 译 基 准 上 对 提 出 的 方 法 进 行 了 全
+面评估,结果表明提出的方法在实时语音翻译性能上超过了现有最佳方法。进一 步 的 分 析 实 验 展 示 了 该 方 法 的 有
+效性和优越性。
+关键词 实时翻译;语音翻译;机器翻译;连接时序分类;非自回归生成;对齐
+中图法分类号 TP18 DOI号 10.11897/SP.J.1016.2025.01100
+CTC-BasedDecoder-onlySimultaneousSpeechTranslation
+ZHANGShao-Lei1),3) FENG Yang1),2),3)
+1)(KeyLaboratoryofIntelligentInformationProcessing,InstituteofComputingTechnology,
+ChineseAcademyofSciences,Beijing 100190)
+2)(KeyLaboratoryofAISafety,ChineseAcademyofSciences,Beijing 100190)
+3)(UniversityofChineseAcademyofSciences,Beijing 100049)
+Abstract Cross-lingualcommunicationinreal-timescenariosisakeyaspectoftheglobalization
+process.Simultaneousspeechtranslation (SimulST)aimstooutputthetarget-languagetransla
+tionconcurrentlywiththespeaker'sspeech,offeringpromisingapplicationsinvariousreal-time
+scenarios.Althoughcurrentoffline modelshavelarge-scaleparameters,theirarchitescturestill
+cannotdirectlyaddressreal-timecross-lingualcommunicationneeds.Inthisbackground,theu
+niquerequirementsofreal-timeperformance makeSimulST particularlynecessaryforbothre
+searchandpracticalapplications.Unlikeofflinespeechtranslation,SimulSTismorechallenging
+duetothenecessityofaREAD/WRITEpolicythatcontrolsthemodeltostarttranslatingatap
+propriate moments,thereby achieving high-quality translation with low latency.Ideally,a
+SimulST modelshouldgeneratethecorrespondingtargettextimmediatelyuponreceivingthea
+
+
+lignedspeechinputs,ensuringbothhightranslationqualityandlowlatency.Therefore,model
+ingthealignmentbetweenthesourcespeech andthetargettextisessentialfor guidingthe
+READ/WRITEpolicy.Inthispaper,weintroduceadecoder-onlySimulST model(DeST)based
+onConnectionistTemporalClassification (CTC)alignments.DeSTlearnsthealignmentsbe
+tweensourcespeechandtargettextusingtheCTCloss,andthendeterminestheREAD/WRITE
+actionsbasedonthisalignment.CTClosscaneffectivelyintegratelearningalignmentandgenera
+tingtargettextinaunifiedframework duringtraining,therebyfindingtheoptimalREAD/
+WRITEpolicy.Theexperimentalresultsontwospeechtranslationbenchmarksshowthatthe
+proposedmethodoutperformspreviousstrongsimultaneousspeechtranslationbaselines.Further
+analysesdemonstratetheeffectivenessandsuperiorityoftheproposed method.
+Keywords simultaneoustranslation;speech translation;machinetranslation;connectionist
+temporalclassification;non-autoregressivegeneration;alignment
+1引 言
+实时场景中的跨语言沟通是全球化进程中的重要
+场景。实 时 语 音 翻 译 (SimultaneousSpeech Transla
+tion,SimulST)旨在 将 源 语 言 语 音 即 时 转 化 为 目 标
+语言文本[1-7]。该技 术 在 国 际 会 议、实 时 直 播、跨 国
+旅游等诸多实时场 景 中 得 到 了 广 泛 应 用,为 人 们 提
+供了低延时的跨语 言 交 流 服 务,成 为 机 器 翻 译 领 域
+的研究热点[8]。随 着 大 模 型 技 术 的 发 展,大 模 型 显
+著提升了许多自然语言处理任务的表现。但在低延
+时的实时跨语言沟 通 场 景 下,超 大 参 数 量 的 大 模 型
+由于其较 慢 的 推 理 速 度 仍 未 能 提 供 理 想 的 解 决 方
+案,使得实时语音翻 译 的 研 究 在 低 延 时 需 求 场 景 下
+显得尤为重要。与 此 同 时,实 时 语 音 翻 译 研 究 的 进
+展,将为未来如何构 建 能 够 实 现 高 效 实 时 沟 通 的 大
+型语言模型提供重要的思路和启示。
+实时 语 音 翻 译 面 临 着 巨 大 的 挑 战,因 为 它 要 求
+在低延时的情况下生成高质量的翻译。与离线语音
+翻译需要等待完整 的 源 语 音 输 入 不 同,实 时 语 音 翻
+译需要一个读/写策 略 来 控 制 模 型 在 接 收 流 式 输 入
+时 决 定 继 续 等 待 源 语 言 语 音 输 入 (读 操 作 )还 是 开 始
+翻译目标语言文本 (写 操 作),如 图 1 所 示。 理 想 情
+况下,实时语音翻译 模 型 应 在 接 收 到 相 关 的 源 语 言
+语音后再开始生成 对 应 的 目 标 语 言 文 本,从 而 确 保
+较高的翻译质量。 因 此,目 标 语 言 文 本 和 源 语 言 语
+音之间的对齐可 以 用 于 指 导 实 时 语 音 翻 译 的 读/写
+策略。
+现 有 的 实 时 语 音 翻 译 读/写 策 略 主 要 分 为 两 类 :
+固定策略和自适应策略。固定策略根据预先制定的
+图1 实时语音翻译示意图
+规则执行读/写 操 作,例 如 Wait-k 策 略 在 先 等 待 固
+定时间的语音输 入 后,每 接 收 到 280 毫 秒 语 音 生 成
+一个目标单词。此类方法完全忽略了目标语言文本
+和源语言语音的相 关 性,可 能 破 坏 源 语 言 语 音 的 完
+整性,并强制模型在 未 收 到 相 关 源 语 言 语 音 时 输 出
+目标语言文本,从 而 导 致 翻 译 质 量 下 降。 自 适 应 策
+略 则 根 据 当 前 输 入 的 语 音 动 态 决 策 读/写 操 作 ,从 而
+实现更好的实时 语 音 翻 译 性 能。 然 而,现 有 的 自 适
+应策略通常只关注源语言语音和源语言文本之间的
+对齐来找到合适的 切 分 位 置,例 如 依 赖 外 部 语 音 分
+段模型或启发式的语音边界检测器来切分源语言语
+音,却忽略了源语言 语 音 和 目 标 语 言 文 本 之 间 的 对
+齐关系。这使得其在一些语法结构差异较大的语音
+间 进 行 实 时 语 音 翻 译 时 ,难 以 找 到 最 佳 的 翻 译 时 机 。
+为此,本 文 旨 在 探 究 一 种 基 于 源 语 言 语 音 和 目
+标语言文本之间对齐的实时语音翻译方法。考虑到
+实时语音翻译的延时受到模型开始翻译时机和推理
+速度的双重影响,本 文 提 出 了 一 种 基 于 连 接 时 序 分
+类 解 码 器 (CTC-based Decoder-onlySimultaneous
+SpeechTranslation,DeST)的 实 时 语 音 翻 译 方 法,
+其通过连接时序分类技术将对齐和生成整合在统一
+的框架下。DeST 采用 连 接 时 序 分 类 解 码 器 进 行 实
+时语音 翻 译,其 整 体 为 非 自 回 归 (Non-autoregres
+1101
+5 期 张绍磊等:基于连接时序分类解码器的实时语音翻译方法
+
+
+sive)解 码 器 架 构,并 利 用 连 接 时 序 分 类 (Connec
+tionistTemporalClassification,CTC)技 术 实 现 不
+等长的 语 音 和 文 本 序 列 之 间 的 对 齐。具 体 而 言,
+DeST 通过连接时序分 类 解 码 器 直 接 将 源 语 言 转 化
+为目标语言文本,并 在 目 标 文 本 词 表 中 插 入 特 殊 空
+白标记 ,当模型生成 时,说明没有目标词对齐到当
+前的语音输入,DeST 继 续 等 待 新 的 语 音 输 入(即 执
+行 读 操 作 );反 之 ,当 模 型 生 成 目 标 词 时 ,则 说 明 该 目
+标词对齐到当前输 入 上,模 型 可 以 开 始 翻 译 生 成 目
+标文本(即执行写操作)。在训练过程中,带有 和重
+复标记的目标序列 通 过 CTC 损 失 函 数 与 标 准 译 文
+进行优化,从 而 联 合 学 习 对 齐 和 目 标 文 本 的 生 成。
+如此 一 来,DeST 能 够 基 于 源 语 言 语 音 和 目 标 语 言
+文本 之 间 的 对 齐 获 得 准 确 的 读/写 策 略,另 外,连 接
+时序分类解码器的非自回归结构也将带来较快的推
+理 速 度 ,从 而 在 低 延 时 下 获 得 高 质 量 翻 译 。
+本文在公开的语 音 翻 译 数 据 集 上 评 估 了 DeST
+的性能,包括 MuST-C 英语 到 德 语 语 音 翻 译 数 据 集
+和 MuST-C 英 语 到 西 班 牙 语 语 音 翻 译 数 据 集。 实
+验 结 果 表 明 ,与 现 有 的 固 定 策 略 和 自 适 应 策 略 相 比 ,
+DeST 方 法 在 相 同 延 时 下 取 得 了 更 好 的 翻 译 质 量。
+进一步的分析实验验证了提出的 DeST 在实时语音
+翻译任务中的有 效 性 和 优 势。DeST 为 在 大 模 型 尚
+未能解决的实时跨语言场景中的实时语言翻译提供
+了解决方案,同时为 未 来 的 实 时 交 互 模 型 的 研 究 和
+应用提供了重要的参考价值。
+整 体 上 ,本 文 的 贡 献 主 要 体 现 在 以 下 三 方 面 :
+(1)本 文 提 出 了 一 种 基 于 连 接 时 序 分 类 的 读/写
+策略,实验结果表明 该 策 略 能 够 在 更 加 准 确 的 时 机
+开 始 翻 译 ,从 而 取 得 更 好 的 实 时 翻 译 质 量 。
+(2)本文提出了 一 种 基 于 非 自 回 归 解 码 器 的 语
+音翻译模型,实验表 明 该 架 构 在 离 线 语 音 翻 译 性 能
+上与编码器-解码 器 架 构 相 媲 美,并 且 具 有 更 快 的
+推理速度。
+(3)本文通过全 面 的 实 验 和 分 析 验 证 了 提 出 方
+法中各个模块的 有 效 性 和 优 越 性。 最 后,本 文 给 出
+了提出方法面临的局限性以及潜在的未来研究。
+2 相关工作
+本节 将 介 绍 本 文 所 涉 及 的 相 关 工 作,包 括 语 音
+翻译和实时语音翻译。
+2.1 语音翻译
+语 音 翻 译 (Speech Translation)是 指 将 源 语 言
+的语音输入转换成目标语言文本输出的技术。语音
+翻译任务的数据形式通常表示为语音-源语言文本
+目标 语 言 文 本 三 元 组 {(S,X,Y)},其 中 S = (s1,
+...,s|S|)是 源 语 言 语 音,X = (x1,...,x|X|)是 语 音
+对应的源语言转 录 文 本,Y = (y1,...,y|Y|)是 目 标
+语言翻译文本。语音翻译的方法可以分为级联方法
+和端到端方法。
+(1)级联方 法。 早 期 的 语 音 翻 译 系 统 通 常 采 用
+级联 方 法[9-12],即 先 将 源 语 音 转 录 成 文 本 (语 音 识
+别)[13],然后将文本翻译成目标语言(机 器 翻 译)[14]。
+这种方法的优点在于可以利用已有的语音识别和机
+器翻译技术,达 到 一 定 的 翻 译 效 果。 但 其 缺 点 在 于
+容易在 两 个 阶 段 之 间 积 累 误 差,导 致 翻 译 质 量 下
+降[15]。此外,级联方法在处理 不 同 语 言 的 语 音 翻 译
+时 ,可 能 面 临 语 言 特 定 问 题 ,如 语 言 模 型 和 声 学 模 型
+不 匹 配 等 ,这 进 一 步 影 响 了 翻 译 的 准 确 性 。
+(2)端到 端 方 法。 近 年 来,端 到 端 (end-to-end)
+的语音 翻 译 模 型 逐 渐 兴 起[16-17]。 这 种 模 型 直 接 从
+源语言的语音信号 生 成 目 标 语 言 文 本,不 经 过 中 间
+的文本表示,因 而 可 以 减 少 误 差 积 累[18],提 高 翻 译
+质量。典型的端到端语音翻译模型基于序列到序列
+架构,这些模型通常包含一个编码 器(encoder)和 一
+个解码器 (decoder)。 编 码 器 将 源 语 音 信 号 编 码 成
+隐层表示,解码器则 根 据 这 些 隐 层 表 示 生 成 目 标 语
+言的文本输出。当 前 语 音 翻 译 研 究 中,最 广 泛 采 用
+的模型架构 为 Transformer架 构,其 由 Vaswani等
+人[19]于2017年提出并在序列 建 模 任 务 中 展 现 了 出
+色的性能。整体的端到端语音到文本翻译任务可以
+表 示 为p(Y|S)。 端 到 端 方 法 由 于 其 直 接 性 和 连 贯
+性 ,能 够 更 好 地 捕 捉 语 音 信 号 中 的 上 下 文 信 息 ,从 而
+提升翻译的自然 度 和 准 确 性。 此 外,近 年 来 一 些 语
+音翻译工作 探 索 了 使 用 非 自 回 归 架 构 (non-autore
+gressivearchitectures)[20-21]或 者 仅 使 用 解 码 器 (de
+coder-onlyarchitectures)[22-23]来完成 语 音 到 文 本 的
+翻 译 ,取 得 了 极 具 潜 力 的 效 果 。
+2.2 实时语音翻译
+实 时 语 音 翻 译 (SimultaneousSpeech Transla
+tion)是指将 流 式 输 入 的 源 语 言 语 音 实 时 转 换 成 目
+标语言文本并同步输出的技术。该技术在国际会
+议、跨国商务交流以 及 多 语 言 直 播 等 场 景 中 具 有 广
+泛的应用前景。
+端到端实时语音翻译模型除了执行语音翻译,
+还 需 要 一 个 策 略 来 控 制 模 型 执 行 读/写 操 作 ,其 中 读
+操作控制模型继续 等 待 实 时 语 音 输 入,而 写 操 作 控
+1102 计 算 机 学 报 2025年
+
+
+制 模 型 生 成 一 个 目 标 词 。 形 式 化 的 ,用g(i)表 示 模
+型生成第i个目标词的时机。因此,生 成yi 的 概 率
+为p(yi|S≤g(i),Y<i),其中S≤g(i) 为当前接收到的
+源语言语音,Y<i 为 之 前 生 成 的 目 标 词。 实 时 语 音
+翻译模型 需 要 制 定 策 略 来 决 定g(i),从 而 在 合 适
+的时机产生 高 质 量 翻 译 结 果。根 据 其 读/写 策 略 的
+不 同 ,端 到 端 方 法 可 以 分 为 固 定 策 略 和 自 适 应 策 略 。
+固定策略 固 定 策 略 按 照 预 设 规 则 执 行 读/写
+操作,能够在保证一 定 翻 译 质 量 的 同 时 简 化 决 策 过
+程。Ma等人[24]提 出 了 一 种 固 定 预 决 策 方 法,将 语
+音分割为280毫秒的等长片段,然后使用 Wait-k策
+略(Wait-kPolicy)[4]或 者 单 调 多 头 注 意 力 (Mono
+tonicMulti-headAttention,简 称 MMA)[25]来 决 策
+读/写操作。固定策 略 的 优 点 在 于 其 实 施 简 便 且 易
+于 调 试 ,然 而 ,由 于 其 缺 乏 对 输 入 动 态 变 化 的 适 应 能
+力,可能在处理复杂 语 音 信 号 和 不 同 类 型 语 言 输 入
+时表现出一定的局限性。
+自适应策略 自适应策略根据输入的动态特征
+灵 活 调 整 读/写 操 作 ,以 实 现 更 高 效 和 准 确 的 翻 译 效
+果。Ren等 人[26]提 出 了 SimulSpeech,通 过 检 测 源
+语言语音中的单词 数 量 对 语 音 进 行 分 割,然 后 执 行
+Wait-k策略。Chen等人[27]通过源 语 言 语 音 的 语 音
+识 别 结 果 来 决 策 读/写 操 作 ,进 一 步 提 升 了 实 时 翻 译
+的准确性。Zeng等人[28]提 出 了 RealTrans,通 过 检
+测源语音包含的单词数来缩短语音片段长度并进行
+实时 翻 译,从 而 减 少 延 迟。Dong 等 人[29]提 出 了
+MoSST,在声 学 信 息 累 计 超 过 一 定 阈 值 后 进 行 翻
+译,提 高 了 系 统 对 长 句 子 的 处 理 能 力。Zhang 等
+人[30]提出了ITST,通 过 判 断 接 收 到 的 语 音 信 息 是
+否足够翻译来 动 态 决 策 读/写 操 作。Zhang 等 人[31]
+提出了 MU-ST,基 于 语 义 单 元 对 源 语 言 语 音 进 行
+分割并进行实时语音翻译。
+3方 法
+决策翻译时机是实时语音翻译任务的核心挑
+战。为了确保较高 的 翻 译 质 量,实 时 语 音 翻 译 模 型
+应在接收到足够的 源 语 言 语 音 后,再 开 始 生 成 对 应
+的目标语言文本。 因 此,源 语 言 语 音 和 目 标 语 言 文
+本之间的对齐关系可以有效地指导最佳翻译时机。
+为此,本文提出了一 种 基 于 连 接 时 序 分 类 解 码 器 的
+实时语 音 翻 译 方 法 (CTC-basedDecoder-onlySim
+ultaneousSpeech Translation,DeST),通 过 连 接 时
+序分类技术来建模 语 音 和 文 本 间 的 对 齐 关 系,并 依
+据此对齐关系来决策何时开始翻译。本节将详细介
+绍 DeST 的模型架构、训练和推理过程。
+3.1 模型架构
+图2展示了本文提出的连接时序分类解码器架
+构 ,该 架 构 整 体 采 用 非 自 回 归 结 构 ,由 声 学 特 征 提 取
+器和解码 器[14]组 成。 声 学 特 征 提 取 器 从 原 始 语 音
+输入中提取语音特 征,解 码 器 将 语 音 特 征 以 非 自 回
+归的方 式 映 射 为 目 标 文 本,并 通 过 连 接 时 序 分 类
+(CTC)技 术 来 学 习 目 标 语 言 文 本 和 源 语 言 语 音 之
+间的对齐,从而 决 策 何 时 开 始 翻 译。 各 模 块 具 体 介
+绍如下。
+图2 基于连接时序分类解码器的实时语音翻译示意图
+声学特征提取器 声学特征提取器用于从输入
+的源语言语音S 中提取语音特征。本研究采用预
+训练 的 Wav2Vec2.0 模 型[32],该 模 型 通 过 堆 叠 的
+卷积层和 Transformer层将原始语音信号转换为高
+维的语音特征表 示。 具 体 地,声 学 特 征 提 取 过 程 可
+以 表 示 为 公 式 (1)所 示 。
+H = (S) (1)
+其中,(·)表示声 学 特 征 提 取 器,本 文 采 用 预 训 练
+的 Wav2Vec2.0模型。S 表示 原 始 语 音 输 入,H =
+h1,...,h|H| 表示从 原 始 语 音 输 入 提 取 到 的 语 音
+特征序列。在训练 过 程 中,声 学 特 征 提 取 器 的 参 数
+处于冻结状态。需 要 注 意 的 是,声 学 特 征 提 取 涉 及
+下采样操作和卷积 操 作,因 此 其 提 取 过 程 会 压 缩 原
+始语音序 列 的 长 度。 对 于 基 于 Wav2Vec2.0 模 型
+的 声 学 特 征 提 取 器 ,每 个 语 音 特 征 对 应 于 20 毫 秒 的
+原 始 语 音 输 入 ,即 每 接 收 到 20 毫 秒 语 音 即 可 产 生 一
+个新的语音特征。 解 码 器 在 提 取 语 音 特 征 之 后,解
+码器(Decoder)以 非 自 回 归 的 方 式 对 语 音 特 征 进 行
+1103
+5 期 张绍磊等:基于连接时序分类解码器的实时语音翻译方法
+
+
+上下文建模并解码出目标文本。解码器的输入为语
+音特征 H ,输 出 是 目 标 语 言 文 本。 解 码 器 包 含 N
+个 堆 叠 的 标 准 Transformer 解 码 器 层[14],每 个
+Transformer层由 单 向 自 注 意 力 (self-attention)和
+前馈神 经 网 络 (feed-forwardnetwork)两 个 子 层 构
+成。单向自注意力通过计算语音特征之间的注意力
+来捕捉上下文信息。为了实现对实时语音的建模,
+自注意力机制采用 单 向 方 式,即 每 个 位 置 的 语 音 特
+征只能关注该设 置 之 前 的 语 音 特 征。 形 式 化 地,语
+音特征hi 只能通过注意力关注到那些j≤i的语音
+特征hj ,以 此 来 满 足 对 流 式 语 音 建 模 的 实 时 性 要
+求。前馈神经网络由两个线性变换层和一个激活函
+数 组 成 ,能 够 对 隐 藏 状 态 进 行 进 一 步 的 特 征 变 换 ,从
+而增强模型的表 示 能 力。 形 式 化 地,解 码 器 对 语 音
+特 征 的 建 模 过 程 可 以 表 示 为 公 式 (2)所 示 。
+D = (H) (2)
+其中, (·)表示解码器,D 表示经过解码器处理后
+的隐藏状态。
+读/写策略 设计一个有效的读/写策略是实时
+语音翻译模型在低延时下实现高质量翻译的关键。
+具 体 而 言 ,一 个 理 想 的 读/写 策 略 应 该 控 制 模 型 在 接
+收相关的语音特征 之 后 输 出 目 标 文 本,确 保 翻 译 质
+量的同时避免等待过多语音输入导致的高延时。所
+以,如果能将每个目 标 语 言 文 本 对 齐 到 源 语 言 语 音
+上 ,目 标 词 所 对 齐 位 置 即 为 最 佳 的 开 始 翻 译 的 时 机 。
+然而,目标文本 序 列 和 源 语 音 序 列 长 度 往 往 存
+在明显差异,为此,本 研 究 采 用 连 接 时 序 分 类(CTC)
+技术来建模 源 语 音 和 目 标 文 本 之 间 的 对 齐。CTC
+技术是实现不等长 序 列 间 对 齐 的 常 用 技 术,其 允 许
+模型在输出序列中 包 含 重 复 标 记 和 空 白 标 记,而 生
+成目标词的位置即为对齐位置。通过 CTC 技术,源
+语音和目标文本之间的对齐和目标文本的生成被整
+合在统一的框架下完成。具体 而 言,为 了 通 过 CTC
+技术建模不等长的源语音和目标文本序列之间的对
+齐关系,本文在原始的文 本 词 表V 中 引 入 空 白 标 记
+,得 到 带 有 空 白 标 记 的 新 词 表V' ,如 公 式 (3)所 示 。
+V'=V ∪ {} (3)
+基于隐藏状态 D ,模型通过线性层将高维的隐
+藏状态 D 转 换 为 词 表 大 小 |V'| 的 向 量,并 使 用
+Softmax 层 转 化 为 词 表V'上 的 概 率 分 布 ,用 于 预 测
+每个位置上可能的词汇。
+在推理过程中,将模型在 第i个 语 音 特 征hi 处
+生成的目标词记为yi 。如果yi 为 空 白 标 记 ,则 说
+明没有目标词和语音特征hi 对齐,模型继续等 待 之
+后的语音输入(即 读 操 作);反 之,如 果 模 型 在hi 处
+生成的文本标记yi 不 是 空 白 标 记 或 者 重 复 标 记,
+则 说明yi 对齐到语音特征hi ,模型可以输出yi (即
+写操作)。 形 式 化 地,DeST 在 解 码 出yi 后 执 行 的
+读/写 操 作 可 以 表 示 为 公 式 (4)所 示 。
+Action= READ, ifyi = oryi =yi-1
+WRITE, otherwise
+(4)
+其 中,yi-1 为在之前第i-1位置输出的目标词。如
+果执行读操作 (READ),模 型 将 继 续 等 待 新 的 语 音
+输入;如 果 执 行 写 操 作 (WRITE),模 型 将 输 出yi。
+考虑到可能存在源语言语音结束后目标文本可能尚
+未生成完成的情况,本 研 究 在 源 语 言 语 音 结 束 后 持
+续 填 充 静 音 语 音 (即 全 0 的 语 音 特 征 向 量 )。 这 种 方
+式模拟了人类译员在语音结束后能持续进行翻译的
+模式,支持模型在源 语 言 语 音 停 止 后 继 续 生 成 额 外
+的目标标记。通常 情 况 下,目 标 语 言 文 本 的 生 成 位
+置与语音特征是相 对 齐 的,因 此 仅 有 少 数 几 个 单 词
+可能在源语言语 音 结 束 后 仍 未 生 成。 在 实 践 中,本
+研究在语音输入结束后持续补充静音直到模型生成
+结束 符 <EOS>(即 结 束 生 成 文 本)之 后 停 止,用 于
+处理语音结束后 仍 未 生 成 的 单 词 部 分。 最 终,整 个
+实时翻译过程将在模型生成了结束符 <EOS>之 后
+停止。
+3.2 训 练
+源语言语音特征序 列 H 和 目 标 文 本 序 列Y 是
+两个不等长的序列,这 使 得 按 照 对 应 位 置 应 用 交 叉
+熵损失进行训练 变 得 困 难。 为 了 克 服 这 一 挑 战,本
+文提 出 了 一 种 基 于 连 接 时 序 分 类 (Connectionist
+TemporalClassification,CTC)损 失 的 模 型 进 行 训
+练。CTC 损失常用于非自回归结 构 中,以 在 不 等 长
+的序列间建立有 效 的 监 督 机 制。 通 过 这 种 方 式,模
+型能够同 时 学 习 源 语 音 和 目 标 文 本 之 间 的 对 齐 关
+系 ,以 及 目 标 文 本 的 生 成 过 程 。
+CTC 引入一 个 扩 展 的 输 出 序 列 Z ,其 长 度 为
+|H|,并 允 许 在 目 标 序 列 中 插 入 特 殊 的 空 白 标 记
+和重复标记。在测试时,通 过 对 输 出 序 列Z 依 次 进
+行合并相邻的重复标记并去掉空白标记的 操作,
+以得到目标序 列Y 。CTC 的 训 练 目 标 是 最 大 化 所
+有可能扩展序列Z 的概率之和,如公式(5)所示。
+p(Y|H)=Z∈π ∑-1(Y)
+p(Z|H) (5)
+其中,π 是将扩展序列Z 映射到目标序列Y 的压缩
+操作,合并相 邻 的 重 复 标 记 并 去 掉 空 白 标 记 。 这
+使得模型 可 以 灵 活 地 处 理 不 同 长 度 的 输 入 输 出 序
+1104 计 算 机 学 报 2025年
+
+
+列,从而更 好 地 学 习 它 们 之 间 的 对 齐 关 系。p(Z|
+H)通过3.1小 节 中 介 绍 的 解 码 器 来 建 模,其 中 语
+音特征序列 H 通过多层解 码 器 层 (·)进 行 处 理,
+最后通过线性层和 Softmax层生成输出序列Z 。
+(1)CTC 损 失。 在 训 练 过 程 中,输 入 的 语 音 特
+征序列 H 和输出的目标语言文本序列Y 之间的
+CTC 损失函数 S→Y
+CTC 可以表示为公式(6)和(7)。
+S→Y
+CTC =-logp(Y|H) (6)
+其中 H = (S) (7)
+通过最小化 CTC 损失函数,模型学习到输入序
+列 H 和目标序列Y 之 间 的 对 齐 关 系 以 及 目 标 序 列
+Y 的生成过程。
+(2)多任务 学 习。 除 了 学 习 从 源 语 言 语 音 转 换
+为目标语言文本的 翻 译 任 务 外,本 文 还 引 入 了 语 音
+识别作为辅助任务进一步提升模型的翻译性能。在
+近来的研究中,引入 语 音 识 别 等 辅 助 任 务 已 经 被 证
+明能够有效提升 语 音 翻 译 性 能。 因 此,本 文 采 用 多
+任务学 习 方 法,在 语 音 翻 译 (S→Y)和 语 音 识 别
+(S→X)任务上进 行 联 合 训 练。 为 了 实 现 多 任 务 学
+习,本文采用独立 的 线 性 层 和 Softmax 层 来 分 别 处
+理语音识别任务和 语 音 翻 译 任 务,同 时 共 享 声 学 特
+征提取器和 N 层解码器层。通过多任务学习,提出
+的方法既 能 通 过 参 数 共 享 实 现 多 种 任 务 的 相 互 促
+进,又能够通过独 立 的 线 性 层 和 Softmax 层 实 现 不
+同语言的解码。对 于 语 音 识 别 任 务 而 言,输 入 同 样
+为语音特征 序 列 H ,而 输 出 为 源 语 言 的 转 录 序 列
+X 。同样地,语 音 识 别 任 务 也 通 过 CTC 损 失 来 训
+练,输入的语音特征序列 H 和输出的源语言文本序
+列X 之间的 CTC 损 失 函 数 S→X
+CTC 可 以 表 示 为 公 式
+(8)和(9)。
+S→X
+CTC =-logp(X|H) (8)
+其中 H = (S) (9)
+最终,模型整体的损失函数 为两部分 CTC 损
+失 之 和 ,如 公 式 (10)所 示 。
+= S→Y
+CTC + S→X
+CTC (10)
+3.3 推 理
+在推理时,为了 控 制 实 时 语 音 翻 译 系 统 的 整 体
+延时,本文引 入 了 一 个 超 参 数———首 字 滞 后 T。 该
+参数用于控制模型在等待时长为T 的语音输入之
+后再开始决策。更大的首字滞后使模型在更高延时
+下 完 成 实 时 语 音 翻 译 ;反 之 ,更 小 的 首 字 延 时 使 模 型
+以更低延 时 完 成 实 时 语 音 翻 译。 通 过 引 入 首 字 滞
+后,用户可以在测试 过 程 中 手 动 调 整 期 望 的 延 时 水
+平 ,以 适 配 不 同 延 时 需 求 的 场 景 。
+DeST 的推理算法 如 算 法 1 所 示。实 时 语 音 输
+入记作S ,模型 首先会等待时长为T 的语音输入
+以确保初始语音 段 的 完 整 性。 这 一 阶 段,模 型 仅 积
+累语音数据,不进行任何翻译操作。此后,模型 基
+于当前接收 到 的 语 音S 生 成 目 标 词y 。 在 这 一 过
+程 中 ,模 型 对 每 一 帧 语 音 输 入 进 行 处 理 ,并 结 合 之 前
+的输入进行解码,生成目标词y 。如果生成的目标
+词y 为空白标记或与 之 前 生 成 过 的 标 记 重 复,则 模
+型认为当前语音帧的信息不足以生成新的翻译词,
+因此继续等待20毫秒语音输入(即S.READ(20ms)),
+然后进行下一 次 判 断。 反 之,如 果 生 成 的 目 标 词y
+不是空白标记且与 之 前 的 标 记 不 重 复,则 说 明 目 标
+词y 与当前接收到的 语 音 帧 相 对 齐,模 型 输 出 解 码
+出的目标 词y (即Y.WRITE(y))。 然 后,模 型 读
+入新的语音继续下 一 次 判 断,此 时 如 果 源 语 言 语 音
+输入结束,则模 型 读 入 静 音。 模 型 重 复 此 过 程 直 到
+生 成 结 束 符 <EOS>。
+算 法 1.基 于 连 接 时 序 分 类 解 码 器 的 实 时 语 音 翻
+译推理算法
+输入:模型 ,首字滞后 T ,实时语音输入S
+输 出 :目 标 文 本Y
+初始化:Y = [<BOS>],记录重复标记ypre = <BOS>
+1 IF|S|< T ANDnotS.finished()THEN 2 //当前语音长度未达到 T ,读入语音
+3 S.READ(20ms);
+4 WHILEy ≠ <EOS>DO 5 //解码目标标记
+6 y ← .forward(S);
+7 IF (y= ORy=ypre )ANDnotS.finished()
+THEN
+8 //生成空白标记或者重复标记,读入语音
+9 S.READ(20ms);
+10 ELSE
+11 //输出翻译文本
+12 Y.WRITE(y);
+13 //生成之后,读入新语音
+14 //若此时语音输入结束,读入静音
+15 S.READ(20ms);
+16 y ←ypre ;
+17 RETURNY
+通 过 这 种 方 式 ,模 型 能 够 在 源 语 言 语 音 和 目 标 语
+言文本之间建立有效的对齐,从而在那些对齐的位置
+生成目标词,实现低延时的高质量实时语音翻译。
+4实 验
+本节 对 提 出 的 方 法 进 行 了 全 方 位 的 评 估,将 依
+1105
+5 期 张绍磊等:基于连接时序分类解码器的实时语音翻译方法
+
+
+次 介 绍 数 据 集 、评 价 指 标 、基 线 系 统 和 实 验 结 果 。
+4.1 数据集
+本文在两个实时语音翻译基准上进行了实验,
+包括 MuST-C1 英语到德语翻译数 据 集(234K 条 语
+音-文本对)和 MuST-C 英语到西班牙语数据 集[33]
+(270K 条语音 - 文 本 对)。MuST-C 数 据 集 是 一 个
+大规模的多语言语 音 翻 译 数 据 集,广 泛 应 用 于 语 音
+翻译研究。本文 使 用 了 dev集 合 作 为 验 证 集,其 中
+英语到德语翻译的 验 证 集 包 含 1423 条 语 音 - 文 本
+对,英 语 到 西 班 牙 语 翻 译 的 验 证 集 包 含 1316 条 语
+音-文本对;使用tst-COMMON 集 合 作 为 测 试 集,
+其中英语到德语 翻 译 的 测 试 集 包 含 2641 条 语 音 
+文本 对,英 语 到 德 语 翻 译 的 测 试 集 包 含 2502 条 语
+音-文本对。
+对于 语 音 数 据,本 文 采 用 了 原 始 的 16-bit
+16kHz单声道音频波形,以 确 保 语 音 信 号 的 高 质 量
+和一致 性。 对 于 文 本 数 据,本 文 使 用 了 Sentence
+Piece工具为源语 言 文 本 和 目 标 语 言 文 本 分 别 生 成
+大 小 为 6000 的 词 表 。
+4.2 评价指标
+实时语音翻译的性能从翻译质量和延时两方面
+进 行 评 估 ,以 全 面 衡 量 模 型 的 实 际 应 用 效 果 。
+(1)翻译质 量。 本 研 究 采 用 机 器 翻 译 任 务 的 标
+准指标 BLEU 值[34]来 评 估 实 时 语 音 翻 译 的 翻 译 质
+量。BLEU 值衡量了翻译结果和标准译文之间的相
+似 性 ,是 一 种 广 泛 使 用 的 自 动 化 评 估 指 标 ,能 够 有 效
+反映翻译系统的 性 能。 更 进 一 步,为 了 评 估 翻 译 的
+语义准确性,本文使用 被 广 泛 使 用 的 COMET 值 来
+评估生成的翻译和标准翻译之间的语义准确性。
+(2)延 时。 本 研 究 采 用 平 均 滞 后[4](Average
+Lagging,AL)来评 估 实 时 语 音 翻 译 的 延 时。AL 衡
+量了目标语言文本输出滞后于源语言语音输入的平
+均时间(毫 秒 )。 形 式 化 地,记 录 模 型 在 时 刻 (yi)
+生成了目标词yi ,则 AL 的计算如公式(11)和(12)
+所示。
+AL= 1
+τ∑
+τ
+i=1
+(yi)- i-1
+|Y|/TS
+(11)
+τ=argmini (yi =TS) (12)
+其中,TS 表示语音输入的总时长,τ 表 示 源 语 言 语
+音结束时生成的目标单词数。平均滞后 AL 值通过
+计算目标词生成的 时 间,量 化 了 翻 译 过 程 中 产 生 的
+延时。
+本文应用开源的 SimulEval工 具 2[35]来 模 拟 语
+音实时输入的过程。该工具可以自动化模拟说话人
+说话并在过程中将 流 式 语 音 实 时 发 送 给 模 型,并 接
+受模型返回的翻 译 结 果。 最 终,该 工 具 可 以 自 动 化
+地计算翻译质量和延时的评估指标。
+4.3 基线系统
+为了全面评估 提 出 方 法 的 有 效 性,本 文 在 以 下
+系统上进行了实验:
+(1)离线 翻 译 (Offline):离 线 语 音 翻 译 系 统 在
+接收完整的语音输 入 后 再 进 行 翻 译,滞 后 时 间 即 为
+完整语 音 输 入 的 时 长。离 线 翻 译 系 统 采 用 标 准 的
+Transformer 模型,即编码器-解码器架构,其包括6
+层编码器层和6层自回归的解码器层。
+(2)Wait-k:Wait-k 策 略[4]是 实 时 语 音 翻 译 中
+最广泛 应 用 的 策 略。 Wait-k 策 略 以 固 定 时 长 (280
+毫秒)对语 音 进 行 分 段[24],并 设 置 每 280 毫 秒 的 语
+音对应一个词。基 于 此,Wait-k 策 略 控 制 模 型 首 先
+滞后k 个 语 音 片 段(即k×280 毫 秒),然 后 每 接 收
+280 毫 秒 语 音 就 生 成 1 个 目 标 词 ,直 到 翻 译 结 束 。
+(3)Wait-k-Stride-n:Wait-k-Stride-n 策 略[28]是
+Wait-k策 略 的 变 体。 Wait-k-Stride-n 策 略 控 制 模
+型 首先滞后k个语音片段,然后每n×280毫秒生成
+n 个 目 标 词 。 参 考 原 文 中 的 最 佳 设 置 ,本 文 选 择n=
+2 ,即 每 接 收 560 毫 秒 语 音 就 生 成 2 个 目 标 词 。
+(4)MMA3:单 调 多 头 注 意 力 机 制 (Monotonic
+MultiheadAttention,MMA)[25]其 将 语 音 分 割 为 等 长的片段(120毫秒、200 毫 秒 和 280 毫 秒[24]),然 后
+通过引入 一 个 0/1 伯 努 利 变 量 来 进 行 读/写 决 策。
+在训练中,伯努利变 量 以 期 望 的 形 式 和 翻 译 模 型 通
+过注意力机制一起联合训练。
+(5)SimulSpeech:基 于 单 词 检 测 器 的 实 时 语 音
+翻译方法[26],其通过识别源语 言 语 音 中 所 包 含 的 源
+语言单 词 数 来 决 策 是 否 开 始 翻 译。 在 训 练 中,
+SimulSpeech引入注意力分 布 上 的 知 识 蒸 馏 技 术 提
+升翻译性能。
+(6)SH:ASR 辅助 的 实 时 语 音 翻 译 方 法 (Shor
+testHypothesis,SH)[27]其 对 源 语 言 语 音 进 行 语 音
+识别(ASR)并 采 用 识 别 结 果 中 的 最 短 候 选 来 指 示
+语音中的源语言单 词 数,然 后 根 据 此 单 词 数 来 执 行
+Wait-k 策 略 。
+(7)RealTrans:卷积加权 Transformer[28],其通 过 CTC 损失来检测 源 语 言 语 音 所 对 齐 的 源 语 言 单
+词数并结合 Wait-k-Stride-n策略进行解码。
+1106 计 算 机 学 报 2025年
+1 2 3
+https://ict.fbk.eu/must-c。 https://github.com/facebookresearch/SimulEval。 https://github.com/pytorch/fairseq/examples/simultaneous_translation。
+
+
+(8)MoSST1:单 调 分 段 实 时 语 音 翻 译 方 法
+(Monotonic-segmentedStreamingSpeech Transla
+tion,MoSST)[29],其 采 用 整 合 - 发 射 方 法 (in
+tegrate-and-fire[36])根 据 累 积 的 声 学 信 息 进 行 语 音
+分段。然后基于语音分段数来执行 Wait-k策略。
+(9)ITST2 :基 于 信 息 运 输 的 实 时 语 音 翻 译 方 法
+(Information-transport-based Simultaneous Transla
+tion,ITST)[30],通 过 量 化 从 源 语 言 到 目 标 语 言 的 传
+输信 息,并 根 据 接 收 到 的 累 积 信 息 决 定 是 否 进 行
+翻译。
+(10)MU-ST:基 于 语 义 单 元 的 分 段 方 法(Simul
+taneous Translation based on Meaning Unit,MU
+ST)[31],其通过构建的数据训练外 部 语 音 分 段 模 型,
+用于判断 当 前 接 收 到 的 语 音 是 否 是 完 整 的 语 义 单
+元。MU-ST 并使用该语 音 分 段 模 型 来 决 定 离 线 翻
+译模型何时进行翻译。
+(11)DeST:本 文 提 出 的 基 于 连 接 时 序 分 类 解 码
+器的实时语音翻 译 方 法。DeST 通 过 结 合 连 接 时 序
+分类(CTC)和传统 的 翻 译 模 型,实 现 了 对 实 时 语 音
+翻译过程的精确控制和高效处理。
+所有基线均基于 Fairseq库[37]来实现。本文使
+用预 训 练 的 Wav2Vec2.03[32]作 为 声 学 特 征 提 取
+器,并采用标准的 Transformerdecoder[14]作为解码
+器 。 对 于 解 码 器 ,语 音 特 征 维 度 为 768 维 ,多 头 注 意
+力机 制 的 注 意 力 头 数 为 8,前 馈 神 经 网 络 中 间 维 度
+为 2048。 为 了 和 标 准 的 6 层 编 码 器 -6 层 解 码 器 架
+构保持参数统一,DeST 的解码器包含12层 Trans
+former解 码 器 层。 整 个 训 练 采 用 adam 优 化 器,学
+习率 为 0.0001,热 身 步 数 (warmupstep)为 4000
+步,dropout设置为0.1。本文在4块 NVIDIA3090
+GPU 上进行训练直到模型在验证集上的表现收敛,
+并最终采用验证集表现最佳的模型进行实验。
+4.4 实验结果
+本 文 在 MuST-C 英 语 到 德 语 翻 译 数 据 集 和
+MuST-C 英语 到 西 班 牙 语 翻 译 数 据 集 上 进 行 了 实
+验,以评估 DeST 的 实 时 翻 译 性 能。 为 了 全 面 地 测
+试 DeST 的效果,本 研 究 将 首 字 滞 后 T 调 整 为 不 同
+的 值 ,以 获 得 不 同 延 时 下 的 翻 译 质 量 。 然 后 将 延
+时(AL,毫 秒)作 为 横 坐 标 ,翻 译 质 量 (统 计 准 确 率
+BLEU 值 和 语 义 准 确 性 COMET 值 )作 为 纵 坐 标 ,
+绘 制 翻 译 质 量 - 延 时 曲 线 ,结 果 如 图 3 和 图 4
+所示。
+图3 实时语音翻译性能(BLEU 值)
+实 验 结 果 表 明,DeST 在 所 有 延 时 下 均 优 于 现
+有方法,并在相同延 时 下 取 得 了 更 高 的 实 时 语 音 翻
+译质量。对于固定 策 略,Wait-k、Wait-k-Stride-n等
+方 法 只 能 根 据 预 先 制 定 的 规 则 执 行 读/写 操 作 ,例 如
+每280毫秒翻译一 个 词,这 完 全 忽 略 了 源 语 言 语 音
+和目标语言文本之间的相关性。由于语音信号的多
+样 性 ,每 个 单 词 对 应 的 语 音 长 度 并 不 固 定 ,每 280 毫
+秒翻译一个词容易迫使模型在未接收到足够语音信
+息的情况下翻译 目 标 词,导 致 翻 译 质 量 下 降。 相 比
+之下,提出的方 法 DeST 能 够 根 据 源 语 言 语 音 和 目
+标语言文本之间的 对 齐 关 系,动 态 决 策 执 行 读 操 作
+或写操作,从而在各 个 延 时 情 况 下 均 表 现 出 显 著 的
+优势。
+对于自 适 应 策 略,之 前 的 RealTranS、MoSST、
+SH、MU-ST 等方法 通 常 只 关 注 源 语 言 语 音 和 源 语
+言文本之间的对齐(即 从 源 语 音 中 识 别 出 的 源 语 言
+词 汇 ),并 利 用 包 含 的 源 语 言 单 词 数 量 来 控 制 模 型 执
+行 读/写 操 作 。 这 类 方 法 相 较 于 固 定 策 略 有 所 改 进 ,
+但基于源语言单词数量的策略与翻译目标单词之间
+1107
+5 期 张绍磊等:基于连接时序分类解码器的实时语音翻译方法
+1 2 3
+https://github.com/dqqcasia/mosst。 https://github.com/ictnlp/ITST。 https://dl.fbaipublicfiles.com/fairseq/wav2vec/wav2vec_ small.pt。
+
+
+仍存在不匹配的问题。尤其在语序和结构差异较大
+的语言对间进行实 时 翻 译 时 (例 如 从 主 谓 宾 结 构 的
+英 语 翻 译 到 主 宾 谓 结 构 的 德 语 时 ),源 语 言 单 词 数 量
+难以准确反映能生成的目标语言单词数量。根据语
+音中包含的源语 言 单 词 数 量 制 定 读/写 策 略 难 以 获
+得特别准确的翻译时机。本文提出的 DeST 方法通
+过直接建模源语言语音和目标语言文本之间的对齐
+关 系 ,并 利 用 此 对 齐 信 息 来 决 策 读/写 操 作 。 这 种 方
+式能直接控制模型在目标语言文本的对齐位置上开
+始 翻 译 ,从 而 在 实 时 语 音 翻 译 质 量 上 表 现 更 佳 。
+图4 实时语音翻译性能(COMET 值)
+除了 在 实 时 语 音 翻 译 质 量 方 面 的 优 势,DeST
+的另一个显著特点 是 其 更 快 的 推 理 速 度,这 对 于 实
+时语言翻译至关重要。表1展示了 DeST 与基于标
+准 Transformer架构的实时语音翻译模型之间的推
+理速度对比。以往的实时语音翻译方法通常采用编
+码器解码器 架 构 的 Transformer模 型,每 秒 能 够 生
+成约10 个 目 标 标 记。 其 中 MMA 和 MU-ST 等 方
+法由于引入了额外 模 块,推 理 速 度 相 比 离 线 模 型 降
+低。而本文提出的 DeST 方法则采用非自回归解码
+器架构,每秒能够 生 成 约 73 个 目 标 标 记,推 理 速 度
+相 比 于 离 线 模 型 提 高 了 约 7 倍。 标 准 的 Trans
+former模型采用编码器- 解 码 器 架 构,其 中 解 码 器
+通过自回归方式逐 词 解 码 目 标 文 本,因 此 需 要 多 次
+循环解码 器。 与 此 不 同,DeST 方 法 采 用 非 自 回 归
+解 码 器 架 构 ,对 于 语 音 输 入 仅 需 进 行 一 次 推 理 ,即 可
+生成多 个 目 标 文 本,因 此 在 推 理 速 度 上 具 有 显 著
+优势。
+多语 言 设 置 。DeST 结 构 支 持 多 语 言 设 置 ,因
+此 ,本 节 将 评 估 其 在 多 语 言 设 置 下 的 表 现 。 具 体
+而 言 ,在 多 语 言 设 置 中 ,训 练 使 用 了 MuST-C 英 语
+到 德 语 翻 译 和 MuST-C 英 语 到 西 班 牙 语 翻 译 的 混
+合 语 料 ,且 各 语 言 的 词 表 共 享 ,统 一 训 练 DeST
+模 型 。 在 推 理 阶 段 ,单 一 DeST 模 型 能 够 同 时 完
+成 MuST-C 英 语 到 德 语 和 英 语 到 西 班 牙 语 的 翻
+译 任 务 。 图 5 的 实 验 结 果 表 明 ,语 言 间 参 数 共
+享 进 一 步 提 升 了 DeST 模 型 在 不 同 语 言 上 的 性
+能 ,进 一 步 验 证 了 DeST 结 构 在 多 语 言 设 置 下 的
+有效性。
+表1 模型推理速度对比
+方法 模型架构 英语到德语翻译 英语到西班牙语翻译
+推理速度 (标记/秒) 加速比 推理速度 (标记/秒) 加速比
+Offline 编码器-解码器 10.22 1.00 11.03 1.00
+Wait-k 编码器-解码器 10.24 1.00 11.04 1.00
+Wait-k-Stride-n 编码器-解码器 10.24 1.00 11.04 1.00
+MMA 编码器-解码器 3.24 0.32 4.12 0.37
+SimulSpeech 编码器-解码器 9.12 0.89 10.20 0.92
+SH 编码器-解码器 10.19 1.00 10.97 0.99
+RealTrans 编码器-解码器 8.99 0.88 9.38 0.85
+MoSST 编码器-解码器 9.75 0.95 10.29 0.93
+ITST 编码器-解码器 9.92 0.97 10.37 0.94
+MU-ST 编码器-解码器 9.03 0.88 9.85 0.89
+DeST 非自回归解码器 73.23 7.17 81.15 7.36
+注 :其 中 加 速 比 为 相 对 于 离 线 模 型 (offline)的 加 速 倍 数 。
+1108 计 算 机 学 报 2025年
+
+
+图5 DeST 在多语言设置下的性能提升
+综上所述,本 节 通 过 实 验 验 证 了 DeST 在 实 时
+语音翻译任务中具有显著的性能提升和推理速度优
+势 ,为 实 际 应 用 提 供 了 有 力 支 持 。
+5分 析
+本节 通 过 充 分 的 实 验 分 析,深 入 探 讨 了 提 出 方
+法的有效性和优 越 性。 为 了 公 平 对 比,本 节 中 所 有
+分析实验均在单语种设置下进行。
+5.1 与基于 Transformer的翻译模型间的比较
+为了探究提出的方法相比基于 Transformer的
+语音翻 译 模 型 的 优 势,本 节 在 离 线 场 景 下 评 估 了
+DeST 和基于 Transformer的 语 音 翻 译 模 型 在 离 线
+语音翻译上的性能。本文提出的 DeST 模型不仅能
+够 实 现 实 时 语 音 翻 译 ,还 具 备 离 线 语 音 翻 译 的 能 力 。
+具体而言,通过在测 试 时 将 首 字 延 时 设 置 为 无 穷 大
+(即 T= ∞,在 完 整 语 音 输 入 结 束 后 再 开 始 翻 译 ),
+DeST 模型可以完成离线语音翻译。
+(1)性能。为 了 验 证 DeST 的 离 线 语 音 翻 译 性
+能,本节在表2 中 报 告 了 DeST 模 型 在 离 线 语 音 翻
+译任务中的表现。 结 果 表 明,相 较 于 传 统 基 于 编 码
+器- 解 码 器 架 构 的 离 线 语 音 翻 译 模 型,DeST 模 型
+在离线语音翻译性 能 方 面 取 得 了 一 定 提 升,平 均 提
+升约0.4BLEU 值。这一性能提升的主要原因在于
+基于解码器 的 架 构 (decoder-only)在 相 同 参 数 量 的
+情 况 下 具 备 更 多 的 层 数 ,从 而 具 有 更 强 的 建 模 能 力 。
+这表明基于解码器的架构对于语音翻译任务具有一
+定潜力,为未来的语 音 翻 译 研 究 提 供 了 新 的 思 路 和
+方向。
+(2)效 率。 表 1 展 示 了 报 告 了 DeST 和 基 于
+Transformer的语音翻译 模 型(Offline)之 间 的 推 理
+速度。DeST 相 比 于 基 于 Transformer的 语 音 翻 译
+模型平均具有7 倍 左 右 的 加 速 比,具 备 明 显 的 效 率
+用优势。更快的推 理 速 度 为 DeST 在 实 时 场 景 中 的
+应用提供了优势。整 体 上,DeST 在性能和效率上相
+比基于 Transformer的语音翻译模型均具有一定优势。
+表2 离线语音翻译性能对比(BLEU 值)
+方法 参数量 英语到德语 英语到西班牙语
+Offline 190M 22.92 28.54
+DeST 178M 23.34 28.9
+Δ — +0.42 +0.36
+5.2 读/写策略的有效性
+本文提出的方法 DeST 在实时语音翻译任务中
+取得了显著的性能提升。为了深入探讨实时语音翻
+译性能的提升是 否 源 于 提 出 的 基 于 对 齐 的 读/写 策
+略的精确性,本节在 MuST-C 英 语 到 德 语 翻 译 数 据
+集上对 DeST 的 读/写 策 略 进 行 消 融 实 验。 实 验 通
+过将 DeST 中基于目标语言文本和源语言语音对齐
+的读/写策略替换为 Wait-k策略(记为 DeST(Wait
+kPolicy))、MU-ST 策略(记为 DeST(MU-STPoli
+cy))和ITST 策 略 (记 为 DeST(ITST Policy)),来
+验 证 本 文 提 出 的 基 于 对 齐 的 读/写 策 略 的 有 效 性。
+具体而言,DeST 保 持 模 型 结 构 不 变,但 读/写 策 略
+不再依赖生成空白 标 记 或 重 复 标 记 进 行 决 策,而 是
+采用滞后固定时长的 Wait-k策略、基于外部切分的
+MU-ST 策略,以及基于运输信息量的ITST 策略。
+图6 展 示 了 对 DeST 读/写 策 略 进 行 消 融 实 验
+的结果。实验表明,在相同模型架构下,当 DeST 的
+读/写策略被 替 换 为 固 定 策 略 (Wait-k 策 略 )时,模
+型的实时翻译性 能 显 著 下 降。 特 别 是 在 低 延 时 (滞
+后1000毫秒)的情况下,性 能 下 降 尤 为 明 显,BLEU
+值下降约2.5。与 此 同 时,当 DeST 的 读/写 策 略 被
+替换为之前的自适应策略(如 MU-ST 策略和ITST
+1109
+5 期 张绍磊等:基于连接时序分类解码器的实时语音翻译方法
+
+
+策 略 )时 ,模 型 的 实 时 翻 译 性 能 也 出 现 了 不 同 程 度 的
+下降。这些实验结果进一步验证了 DeST 中基于对
+齐 的 读/写 策 略 在 实 时 翻 译 中 的 关 键 作 用 ,该 策 略 能
+够确保模型在适当 的 时 机 开 始 翻 译 目 标 词,从 而 有
+效提升整体翻译性能。
+图6 DeST 中读/写策略的消融实验
+5.3 多任务学习的有效性
+DeST 的 训 练 过 程 采 用 了 多 任 务 学 习 方 法,通
+过引入语音识别作为辅助任务来提升语音翻译的效
+果。为了 验 证 多 任 务 学 习 方 法 的 有 效 性,本 节 在
+MuST-C 英语到德 语 翻 译 数 据 集 上 进 行 消 融 实 验,
+对比了采用多任务学习进行训练的模型和仅使用语
+音翻译 任 务 (即 去 掉 多 任 务 学 习,即 为 DeST w/o
+multitasklearning)进 行 训 练 的 模 型 在 实 时 语 音 翻
+译上的性能,实验 结 果 如 图 7 所 示。 结 果 展 示 了 两
+种训练方法在实时语音翻译任务中的性能差异。具
+体 来 说 ,当 去 除 了 语 音 识 别 辅 助 任 务 后 ,语 音 翻 译 的
+性能下降了约1.5个 BLEU 值。 这 一 结 果 表 明,多
+任务学习方法通过共享参数能够有效地提升模型的
+语音翻译质量。此 外,该 结 果 也 与 之 前 许 多 关 于 离
+线语音翻译研究的 结 论 相 一 致,进 一 步 验 证 了 多 任
+务学习在语音翻译领域的潜力和优势。
+图7 DeST 中读/写策略的消融实验
+5.4 读/写策略质量评估
+为了探究 DeST 的 读/写 策 略 是 否 能 在 合 适 的
+时 机 开 始 翻 译 ,从 而 不 破 坏 语 音 的 完 整 性 ,本 文 借 助
+带标注的语音 分 割 数 据 集———Buckeye语 料 库 1[38]
+来评估翻译时机的适切性。Buckeye语 料 库 在 语 音
+中标注了每个词对应的边界。在实时语音翻译中,
+模型应在接收完整 的 语 音 信 息 后 开 始 翻 译,即 在 这
+些 边 界 处 开 始 翻 译 ;反 之 ,如 果 在 语 音 片 段 中 开 始 翻
+译,则 容 易 破 坏 语 音 的 完 整 性,影 响 翻 译 质 量。 因
+此 ,这 些 边 界 往 往 是 理 想 的 翻 译 时 机 ,评 估 实 时 语 音
+翻译模型在这些 边 界 上 的 命 中 率 可 以 反 映 读/写 策
+略的质量。
+值得 注 意 的 是,语 音 分 割 数 据 集 中 的 边 界 是 以
+语音帧为单位的(即 某 一 帧 是 边 界),而 在 这 些 边 界
+附近的一些帧开始翻译也可能同样能确保翻译时的
+语 音 完 整 性 ,即 不 错 的 翻 译 时 机 。 然 而 ,为 了 延 续 之
+前工作中的实验设 置,本 研 究 仍 然 评 估 开 始 翻 译 时
+机与标注语音边界 帧 完 全 命 中 的 准 确 率,这 可 以 对
+模型的翻译时机进行更严格的评估。
+本研究沿用了语音分割 任 务 上 的 评 估 指 标[39],
+包括精确 度 (Precision)、召 回 率 (Recall)、F1 值、过
+分割率 (Over-Segmentation,OS)和 R-value。 精 确
+度、召 回 率 及 其 对 应 的 F1 值 用 于 衡 量 模 型 的 翻 译
+时机与真实边界 位 置 的 一 致 性。 过 分 割 率 (OS)[40]
+则用于评估模型生 成 的 分 割 数 量 的 准 确 性,其 计 算
+如 公 式 (13)所 示 。
+OS= Recall
+Precision-1 (13) 其中,当 OS=0 时,表 示 分 割 数 量 完 全 准 确;OS 值
+越大,说明 生 成 的 分 割 数 量 越 多;OS 值 越 小,说 明
+生成的分割数量越少。由于在生成较多分割时容易
+获 得 较 高 的 召 回 率 ,但 往 往 伴 随 较 低 的 精 确 度 ,因 此
+R-value[41]被 提 出 用 于 综 合 衡 量 召 回 率 和 过 分 割
+率 。R-value的 计 算 如 公 式 (14)~ (16)所 示 。
+R-value=1-|r1|+|r2|
+2 (14)
+其中r1 = (1-Recall)2 +OS2 (15)
+r2 = -OS+Recall-1
+2
+(16)
+一个更 大 的 R-value表 示 更 好 的 分 割 质 量,只
+有在召回率达到完美(即Recall=1)且 过 分 割 率 为
+零(即 OS=0)的情况下,才能达到最佳 R-value。本
+1110 计 算 机 学 报 2025年
+1 https://buckeyecorpus.osu.edu。
+
+
+研究对 比 了 DeST 策 略 和 Wait-k 策 略、MUST 策
+略、ITST 策略的翻译 时 机 质 量,并 提 供 了 一 些 之 前
+语音分段方 法[39,42-44]的 分 段 质 量 作 为 参 考,结 果 如
+表3所示。实验结果表明 DeST 能够在更加准确的
+位置 开 始 翻 译。具 体 而 言,相 比 于 之 前 的 实 时 语 音
+翻译策 略,DeST 取 得 了 约 9% 的 F1 值 提 升。DeST
+通过目标语言文本和源语言语音之间的对齐动态地
+决策读/写,能够更倾向于在语音的边界处开始翻译,
+从而确保开始翻译时接收到的语音信息是相对完整
+的,这有利于实时语音翻译性能。与直接的语音分段
+方法相比,DeST 的翻译时机基本达到了之前语音分
+段方法的分段水平,表明 DeST 能够在理想的翻译时
+机处开始翻译。综上所述,本小结通过系统的实验验
+证了 DeST 策略在实时语音翻译中的有效性。
+表3 实时语音翻译策略的翻译时机质量对比
+方法 Precision (↑ ) Recall(↑ ) F1 (↑ ) OS (0) R-value(↑ )
+语音分段方法
+ESK-Means[42] 30.7 18.0 22.7 -41.2 39.7
+BESGMM[43] 31.7 13.8 19.2 -56.6 37.9
+VQ-CPCDP[39] 18.2 54.1 27.3 196.4 -86.5
+VQ-VAEDP[39] 16.4 56.8 25.5 245.2 -126.5
+DSegKNN[44] 30.9 32.0 31.5 3.5 40.7
+实时语音翻译策略
+Wait-kPolicy[4] 28.1 16.3 20.7 -42.0 38.4
+MU-STPolicy[31] 31.2 16.3 21.4 -47.8 39.1
+ITSTPolicy[30] 26.7 19.3 22.4 -27.7 38.6
+DeSTPolicy 34.1 28.4 31.0 -16.7 43.8
+注 :结 果 均 为 百 分 比 。
+5.5 案例分析
+为了更清晰地 展 示 实 时 语 音 翻 译 过 程,本 文 在
+图8和图9中可视化了 DeST 在 MuST-C 英语到德
+语的实时翻译过 程。 为 清 晰 起 见,源 语 言 语 音 所 对
+应的转录文本被标 注 在 语 音 信 号 上 方,可 视 化 结 果
+展示了 DeST 在每一时刻接收到的语音输入对应输
+出的目标词。除此 之 外,其 余 时 刻 模 型 均 生 成 空 白
+标记 或重复标记,并继续等待语音输入。
+图8 DeST 处理具有相同语序的英语到德语
+翻译案例时的实时翻译过程
+(1)具 有 相 同 语 序 的 翻 译 案 例
+图8展示了 DeST 在具有相同语序的英语到德
+语案例上的实时 翻 译 过 程。DeST 往 往 在 接 收 到 对
+图9 DeST 处理具有不同语序的英语到德语
+翻译案例时的实时翻译过程
+应的源语言语音之 后 再 开 始 生 成 目 标 词,例 如 在 接
+收语音“Now”之 后 生 成 其 对 应 的 德 语 “Nun”,接 收
+语音“look”之后生成其 对 应 的 德 语“schauen”,接 收
+语音“curve”之 后 生 成 其 对 应 的 德 语 “Kurvean”。
+这一现象体现出本文基于源语言语音和目标语言文
+本之 间 对 齐 所 提 出 的 读/写 策 略 的 优 越 性。DeST
+的翻译过程依赖于源语言语音和目标语言文本之间
+的对齐,模型会在接 收 到 对 应 的 源 语 言 语 音 信 号 后
+再生成目标词。
+(2)具 有 不 同 语 序 的 翻 译 案 例
+图9展示了 DeST 在处理具有不同语序的英语
+1111
+5 期 张绍磊等:基于连接时序分类解码器的实时语音翻译方法
+
+
+到德语翻译案例时的实时翻译过程。语序差异是实
+时翻译模型面临 的 一 个 重 要 挑 战。 例 如,英 语 和 德
+语在句法结构上存 在 显 著 差 异,尤 其 是 动 词 在 句 子
+中的位置可能不 同。 以 图 7 中 的 例 子 为 例,英 语 中
+的“look”位于 第 一 个 子 句 的 结 尾,而 其 对 应 的 德 语
+翻译“Sehen”则位 于 德 语 句 子 的 开 头。 在 遇 到 这 种
+局部语 序 调 换 的 翻 译 时,DeST 在 前 400 毫 秒 内 保
+持等待(即生成空白标记 ),直到接收到“look”及 相
+对完整的源 语 音 语 义 后,才 开 始 输 出 “Sehen”。 得
+益于 DeST 采用的 基 于 对 齐 的 策 略,模 型 能 够 在 等
+待至接收到相对完整的语义信息后再生成对齐的目
+标 文 本 ,从 而 有 效 应 对 不 同 语 言 间 的 语 序 差 异 。
+整体上,DeST 能 够 在 准 确 的 位 置 开 始 翻 译 目
+标词。这种基于 对 齐 的 读/写 策 略 促 使 模 型 在 接 收
+到对齐的源语音之 后 即 可 翻 译 目 标 词,从 而 确 保 了
+较高的翻 译 质 量,同 时 避 免 了 不 必 要 的 额 外 延 时。
+在 某 些 时 刻 ,当 模 型 尚 未 接 收 到 足 够 的 语 音 输 入 时 ,
+它会生成空白标记 或重复标记。这种机制允许模
+型在必要时保持等 待 状 态,避 免 生 成 错 误 的 翻 译 结
+果。总而言之,DeST 在 进 行 实 时 语 音 翻 译 时,能 够
+动态调整生成目标 词 的 时 机,从 而 在 低 延 时 下 取 得
+了较高的翻译质量。
+6 总结与未来研究
+本文提出 了 一 种 基 于 连 接 时 序 分 类 (CTC)解
+码器的实时语 音 翻 译 方 法。 该 方 法 通 过 CTC 技 术
+建模源语言语音与 目 标 语 言 文 本 之 间 的 对 齐,并 基
+于 此 对 齐 制 定 读/写 策 略 ,从 而 在 低 延 时 下 实 现 高 质
+量实时语音翻译。两个公开的实时语音翻译数据集
+上的实验结果表明,提 出 的 方 法 在 实 时 语 音 翻 译 性
+能上优于现有方法,并 在 相 同 延 时 下 取 得 更 好 的 翻
+译质量。本文的研究填补了当前实时语音翻译研究
+中对源语言语音与目标语言文本之间对齐建模的空
+白,为在当前大模型 尚 未 能 胜 任 的 跨 语 言 实 时 沟 通
+场景提供了新的思 路 和 技 术 路 径,具 备 充 分 的 研 究
+和应用价值。本文方法的局限性主要体现为确保模
+型能够在实时场景 中 快 速 响 应,当 前 模 型 在 参 数 量
+上仍处于较少水 平。 因 此,当 前 模 型 只 能 完 成 实 时
+语言翻译这一项特定任务。为了拓展其应用范围,
+未来的研究将着重于如何通过增加模型的参数量,
+进一步提升其在实时语音交互等复杂场景中的表现
+能 力 ,同 时 确 保 推 理 的 实 时 性 。 总 的 来 说 ,本 文 的 研
+究成果不仅为解决跨语言实时沟通问题提供了新的
+技术方案,也为未来 大 模 型 的 实 时 能 力 构 建 奠 定 了
+基础。通过本文的 工 作,相 关 技 术 的 探 索 与 应 用 将
+有助于推动大模型在实际生产环境中的落地应用,
+为日后实时交互任务的实现和优化提供了宝贵的启
+发和指导。
+致 谢 我们衷心感谢各位专家在审稿过程中
+对本论文提出的宝贵意见!
+参考文献
+[1] Guan Mo-Lin,SunJing,MaLan,etal.Principleandimple
+mentation method ofcomputerspeech real-timetranslation
+system.Examination Weekly,2011(83):163-164 (in Chi
+nese)
+(关墨霖,孙晶,马兰,等.计 算 机 语 音 实 时 翻 译 系 统 原 理 和
+实现方法 .考试周刊,2011(83):163-164)
+[2] GrissomIIA,HeH,Boyd-GraberJ,etal.Don’tuntilthefi
+nalverb wait:Reinforcementlearningforsimultaneous ma
+chinetranslation//Proceedingsofthe2014ConferenceonEm
+piricalMethodsin NaturalLanguageProcessing (EMNLP).
+Doha,Qatar,2014:1342-1352
+[3] GuJ,NeubigG,ChoK,etal.Learningtotranslateinreal
+timewithneuralmachinetranslation//Proceedingsofthe15th
+Conferenceofthe European Chapterofthe Associationfor
+ComputationalLinguistics:Volume1,LongPapers.Valenci
+a,Spain,2017:1053-1062
+[4] Ma M,Huang L,Xiong H,etal.STACL:Simultaneous
+translation withimplicitanticipationandcontrollablelatency
+usingprefix-to-prefixframework //Proceedings ofthe57th
+AnnualMeetingoftheAssociationforComputationalLinguis
+tics.Florence,Italy,2019:3025-3036
+[5] LiTian-Yun.Analysisofmachinesimultaneousinterpretation
+system underthemodelofinterpretingwork.OrientalTrans
+lation,2018,000(6):34-39 (inChinese)
+(李天韵.口译工 作 模 型 下 的 机 器 同 声 传 译 系 统 分 析.东 方 翻
+译 ,2018,000(6):34-39)
+[6] GuoHui-Jun.Machinesimultaneoustranslationsystem based
+onartificialintelligencetechnology and speech recognition.
+ModernElectronicTechnology,2022,045(009):152-156 (in
+Chinese)
+(郭慧骏.基于 人 工 智 能 技 术 和 语 音 识 别 的 机 器 同 步 翻 译 系
+统 .现 代 电 子 技 术 ,2022,045(009):152-156)
+[7] Lu Xin-Chao.Humanand machinesimultaneousinterpreta
+tion:Comparisonandprospectsofcognitiveprocesses,abili
+ties,andquality.ChineseTranslatorsJournal,2023,44(3):
+135-141 (inChinese)
+(卢信朝.人工与机 器 同 声 传 译:认 知 过 程,能 力,质 量 对 比
+与 展 望 .中 国 翻 译 ,2023,44(3):135-141)
+[8] LiYa-Chao,XiongDe-Yi,ZhangMin.Asurveyofneuralma
+1112 计 算 机 学 报 2025年
+
+
+chinetranslation.ChineseJournalof Computers,2018,41
+(12):2734-2755 (inChinese)
+(李亚超,熊 德 意,张 民.神 经 机 器 翻 译 综 述.计 算 机 学 报,
+2018,41(12):2734-2755)
+[9] StentifordF W,Steer M G.Machinetranslationofspeech.
+BritishTelecom TechnologyJournal,1988,6(2):116-122
+[10] WuZ,CaglayanO,IveJ,etal.Transformer-basedcascaded
+multimodalspeechtranslation//Proceedingsofthe16thIn
+ternational Conference on Spoken Language Translation.
+HongKong,China,2019:1-8
+[11] BentivogliL,Cettolo M,Gaido M,etal.Cascadeversusdi
+rectspeechtranslation:Dothedifferencesstillmakeadiffer
+ence? //Proceedingsofthe59thAnnualMeetingoftheAsso
+ciationforComputationalLinguisticsandthe11thInterna
+tionalJoint Conference on Natural Language Processing
+(Volume1:LongPapers).Online,2021:2873-2887
+[12] BaharP,Bieschke T,Schlüter R,etal.Tightintegrated
+end-to-end training for cascaded speech translation//2021
+IEEE Spoken Language Technology Workshop (SLT ).
+Shenzhen,China,2021:950-957
+[13] Chan W,JaitlyN,LeQ,etal.Listen,attendandspell:A
+neuralnetworkforlarge vocabulary conversationalspeech
+recognition//2016IEEEInternationalConferenceon Acous
+tics,Speech and SignalProcessing (ICASSP).Shanghai,
+China,2016:4960-4964
+[14] UtskeverI,VinyalsO,LeQ V.Sequencetosequencelearn
+ingwithneuralnetworks//Proceedingsofthe2014Advances
+inNeuralInformationProcessingSystems.Montreal,Cana
+da,2014:3104-3112
+[15] RuizN,FedericoM.Assessingtheimpactofspeechrecogni
+tionerrorsonmachinetranslationquality//Proceedingsofthe
+11thConferenceoftheAssociationforMachineTranslationin
+theAmericas:MT ResearchersTrack.Vancouver,Canada,
+2014:261-274
+[16] WangC,WuY,LiuS,etal.Bridgingthegapbetweenpre
+trainingandfine-tuningforend-to-endspeechtranslation//
+Proceedingsofthe AAAI Conference on ArtificialIntelli
+gence:Vol.34.New York,USA,2020:9161-9168
+[17] WangC,Wu Y,LiuS,etal.Curriculum pre-trainingfor
+end-to-endspeechtranslation//Proceedingsofthe58th An
+nualMeetingofthe AssociationforComputationalLinguis
+tics.Online,2020:3728-3738
+[18] EtchegoyhenT,ArzelusH,GeteH,etal.Cascadeordirect
+speechtranslation? acasestudy.AppliedSciences,2022,12
+(3):1097-1108
+[19] VaswaniA,ShazeerN,ParmarN,etal.Attentionisallyou
+need//Proceedingsofthe2017 Advancesin NeuralInforma
+tion Processing Systems. Long Beach, USA. 2017:
+5998-6008
+[20] ChuangSP,Chuang Y S,ChangC C,etal.Investigating
+thereordering capabilityin CTC-based non-autoregressive
+end-to-endspeechtranslation//Findings ofthe Association
+forComputationalLinguistics:ACL-IJCNLP2021.Online,
+2021:10681077
+[21] XuC,Liu X,Liu X,etal.CTC-basednon-autoregressive
+speechtranslation//Proceedingsofthe61stAnnual Meeting
+oftheAssociationforComputationalLinguistics(Volume1:
+LongPapers).Toronto,Canada,2023:13321-13339
+[22] WuJ,GaurY,ChenZ,etal.Ondecoder-onlyarchitecture
+forspeech-to-textandlargelanguagemodelintegration//Pro
+ceedingsofthe2023IEEE AutomaticSpeechRecognitionand
+Understanding Workshop (ASRU 2023).Taipei,China,
+2023:1-8
+[23] HuangC W,Lu H,Gong H,etal.Investigatingdecoder
+onlylargelanguage modelsforspeech-to-texttranslation//
+Proceedingsofthe25thInterspeechConference.KosIsland,
+Greece,2024:832-836
+[24] MaX,PinoJ,Koehn P.SimulMTtoSimulST:Adapting
+simultaneous text translation to end-to-end simultaneous
+speechtranslation//Proceedingsofthe1stConferenceofthe
+Asia-Pacific Chapter ofthe Association for Computational
+Linguisticsandthe10thInternationalJoint Conferenceon
+NaturalLanguageProcessing.Suzhou,China,2020:582-587
+[25] MaX,PinoJM,CrossJ,etal.Monotonicmultiheadatten
+tion//ProceedingsoftheInternationalConferenceon Learn
+ingRepresentations.Online,2020:1-16
+[26] RenY,LiuJ,TanX,etal.SimulSpeech:Endto-endsimul
+taneousspeechtotexttranslation//Proceedingsofthe58th
+AnnualMeetingofthe Associationfor ComputationalLin
+guistics.Online,2020:3787-3796
+[27] ChenJ,Ma M,ZhengR,etal.Directsimultaneousspeech
+to-texttranslationassistedbysynchronizedstreamingASR//
+Findingsofthe Associationfor ComputationalLinguistics:
+ACL-IJCNLP2021.Online,2021:4618-4624
+[28] ZengX,LiL,Liu Q.RealTranS:End-to-endsimultaneous
+speech translation with convolutional weighted-shrinking
+transformer//Findingsofthe AssociationforComputational
+Linguistics:ACL-IJCNLP2021.Online,2021:2461-2474
+[29] DongQ,ZhuY,Wang M,etal.Learningwhentotranslate
+forstreamingspeech//Proceedingsofthe60thAnnualMeet
+ingoftheAssociationforComputationalLinguistics(Volume
+1:LongPapers).Dublin,Ireland,2022:680-694
+[30] Zhang S,Feng Y.Information-transport-based policy for
+simultaneoustranslation//GOLDBERG Y,KOZAREVA Z,
+ZHANG Y.Proceedingsofthe2022ConferenceonEmpirical
+MethodsinNaturalLanguageProcessing.AbuDhabi,Unit
+edArabEmirates,2022:992-1013
+[31] ZhangR,HeZ,Wu H,etal.Learningadaptivesegmenta
+tionpolicyforend-to-endsimultaneoustranslation//Proceed
+ingsofthe60thAnnualMeetingoftheAssociationforCom
+putationalLinguistics (Volume1:Long Papers).Dublin,
+Ireland,2022:7862-7874
+[32] BaevskiA,Zhou Y,Mohamed A,etal.wav2vec2.0:A
+frameworkforself-supervisedlearningofspeechrepresenta
+1113
+5 期 张绍磊等:基于连接时序分类解码器的实时语音翻译方法
+
+
+tions//Proceedingsofthe33rd AnnualConferenceon Neural
+InformationProcessingSystems.Online,2020:12449-12460
+[33] DiGangiM A,CattoniR,BentivogliL,etal.MuST-C:a
+MultilingualSpeech Translation Corpus//Proceedingsofthe
+2019ConferenceoftheNorthAmericanChapteroftheAsso
+ciation for Computational Linguistics: Human Language
+Technologies,Volume1 (LongandShortPapers).Minneap
+olis,USA,2019:2012-2017
+[34] PostM.AcallforclarityinreportingBLEU scores//Pro
+ceedingsofthe Third Conferenceon Machine Translation:
+ResearchPapers.Brussels,Belgium,2018:186-191
+[35] MaX,DoustiMJ,WangC,etal.SIMULEVAL:Anevalu
+ationtoolkitforsimultaneoustranslation//Proceedingsofthe
+2020ConferenceonEmpiricalMethodsin NaturalLanguage
+Processing:System Demonstrations.Online,2020:144-150
+[36] DongL,XuB.Cif:Continuousintegrate-and-fireforend-to
+endspeechrecognition//Proceedingsofthe2020IEEEInter
+nationalConferenceonAcoustics,SpeechandSignalProcess
+ing.Barcelona,Spain,2020:6079-6083
+[37] OttM,EdunovS,BaevskiA,etal.fairseq:Afast,extensi
+bletoolkitforsequence modeling//Proceedingsofthe2019
+ConferenceoftheNorthAmericanChapteroftheAssociation
+forComputationalLinguistics (Demonstrations).Minneapo
+lis,USA,2019:48-53
+[38] PittM A,JohnsonK,HumeE,etal.Thebuckeyecorpus
+ofconversationalspeech:labelingconventionsandatestof
+transcriberreliability.SpeechCommunication,2005,45(1):
+89-95
+[39] Kamper H,Van Niekerk B.Towardsunsupervised phone
+andwordsegmentationusingself-supervisedvector-quantized
+neuralnetworks//Proceedingsofthe2021Interspeech Con
+ference.Brno,CzechRepublic,2021:1539-1543
+[40] PetekB,AndersenO,DalsgaardP.Ontherobustautomatic
+segmentation of spontaneous speech//Proceedings of the
+FourthInternationalConferenceon Spoken Language Pro
+cessing.Philadelphia,USA,1996:913-916
+[41] RäsänenO,LaineU,AltosaarT.Animprovedspeechseg
+mentationquality measure:ther-value//Proceedingsofthe
+10thAnnualConferenceoftheInternationalSpeechCommu
+nicationAssociation.Brighton,UK,2009:1851-1854
+[42] KamperH,LivescuK,GoldwaterS.Anembeddedsegmen
+talk-meansmodelforunsupervisedsegmentationandcluste
+ringofspeech//Proceedings ofthe 2017 IEEE Automatic
+SpeechRecognitionandUnderstanding Workshop.Okinawa,
+Japan,2017:719-726
+[43] KamperH,JansenA,GoldwaterS.Asegmentalframework
+forfully-unsupervisedlarge-vocabulary speech recognition.
+ComputerSpeechLanguage,2017,46:154-174
+[44] FuchsT S,Hoshen Y,KeshetJ.Unsupervised wordseg
+mentationusingknearestneighbors//ProceedingsoftheIn
+terspeech 2022 Conference.Incheon,Republic of Korea,
+2022:4646-4650
+ZHANG Shao-Lei,Ph.D.candi
+date.Hisresearchinterestsarenatural
+languageprocessing,simultaneoustran
+slationandlargelanguagemodel.
+FENG Yang,Ph.D.,professor.Herresearchinterests
+mainlyfocusonnaturallanguageprocessingandlargelan
+guagemodels.
+Background
+Thetaskofsimultaneousspeechtranslation (SimulST)
+lieswithinthebroaderfieldofmachinetranslationandspeech
+recognition,aimingtoconvertspokenlanguageintotarget
+languagetextinrealtime.Thisfieldhasgarneredsignificant
+attentionduetoitscriticalapplicationsininternationalcon
+ferences,livebroadcasts,andcross-culturalcommunication,
+wherelow-latency,high-qualitytranslationsareessential.
+Significantprogresshasbeen madeinternationallyinad
+dressingthechallengesofSimulST,with methodsprimarily
+categorizedintofixedandadaptivepolicies.Fixedpoliciesop
+erateonpredefinedrulesto manageREAD/WRITEactions,
+providinga straightforward approach butoften struggling
+withdiverseandcomplexspeechinputs.Incontrast,adap
+tivepoliciesdynamicallyadjustREAD/WRITEactionsbased
+oncurrentspeechinputs,yieldingbetterperformanceinhan
+dlingvariedandfluctuatingspeechsignals.Despitethesead
+vancements,existing methodsfrequently rely on external
+segmentation modelsorheuristicboundarydetectors,which
+neglectthecrucialalignmentbetweensourcespeechandtar
+gettext.
+Thispaperaddressestheselimitationsbyintroducinga
+novelCTC-basedDecoder-onlySimultaneousSpeechTransla
+tion (DeST) method.DeST integratesthealignmentand
+generation withinaunifiedframework,leveraging Connec
+tionistTemporalClassification (CTC)toachievehigh-quali
+ty,low-latencyspeechtranslation.Experimentalresultson
+showthattheproposed methodoutperformsexisting meth
+odsin simultaneous speech translation,achieving better
+1114 计 算 机 学 报 2025年
+
+
+translationqualityatthesamelatency.Furtheranalysesveri
+fytheeffectivenessofeach moduleinthemethodandthesu
+periorityofthealignment-basedREAD/WRITEpolicy.
+Theimplicationsofthisresearchextendfarbeyondthe
+domainofSimulST.Byadvancing methodologiesforreal
+timeprocessingandalignment,thisworkoffersvaluablein
+sightsandpotentialinspirationforotherreal-timetaskssuch
+asstreamingautomaticspeechrecognition (ASR)andreal
+timetext-to-speech (TTS).Thesetasksalsorequireefficient
+handlingofcontinuousinputdataandreal-timegenerationof
+output,making the principles developed in this research
+broadlyapplicable.TheintegrationofCTCanddecoder-only
+architecturescouldstimulatefurtherdevelopmentsinthese
+fields,promotinginnovationsinreal-timehuman-computer
+interactiontechnologies.
+Moreover,enhancingsimultaneoustranslationtechnolo
+gieshassignificantpracticalimplications.Improvedlow-la
+tency,high-qualitytranslationscanfacilitate moreeffective
+communicationinmultilingualsettings,reducelanguagebar
+riers,and enhance global collaboration. This research,
+therefore,holdsthepotentialtoimpactvariousdomains,in
+cluding international business,education,healthcare,and
+beyond.
+Ourresearch group haspreviouslycontributedtothis
+fieldwithseveralstudies,layingastrongfoundationforthis
+work.Buildingonthisfoundation,thepresentstudyaimsto
+pushtheboundariesofsimultaneousspeechtranslation,of
+feringbothpracticalsolutionsandtheoreticaladvancements
+thatcandrivefutureresearchandapplicationsinrelatedare
+as.
+1115
+5 期 张绍磊等:基于连接时序分类解码器的实时语音翻译方法

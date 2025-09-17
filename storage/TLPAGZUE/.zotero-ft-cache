@@ -1,0 +1,400 @@
+流缓存:在快速存储设备上重新访问文件
+扫描页面缓存
+李志跃,张光艳,清华大学
+https://www.usenix.org/conference/atc24/presentation/li-zhiyue
+本文已收录在the
+2024 USENIX年度技术会议。
+2024年7月10-12日•美国加利福尼亚州
+圣克拉拉978-1-939133-41-0
+
+
+流缓存:在快速存储设备上重新访问文件扫描页面缓存
+李志跃,张光艳*
+清华大学bnist计算机科学与技术系
+摘要
+由于页面缓存可以透明地提供缓冲、数据聚合、I/O 对齐和预取,因此通过页面缓存缓存的I/O在许多情况下 用于文件扫描。然而,我们的研究表明,在快速存储设 备上使用页面缓存进行文件扫描存在两个性能问题:它提 供了有限的I/O带宽,与快速存储设备的性能不一致,并 且大量的后台回写到快速存储设备上可能会严重干扰前 台I/O请求。
+在本文中,我们提出了一种新的页面缓存管理系统 流缓存,用于快速存储设备上的文件扫描。流缓存利用 三种技术来实现高I/O性能。首先,它使用轻量级流跟踪 方法,以顺序流的粒度记录缓存页面的状态。其次,它 使用基于流的页面回收方法来降低对前台I/O请求的干扰。 第三,它使用两层内存管理方法,通过利用CPU缓存局 部性来加速页面分配。
+我们在XFS中实现了流缓存。实验结果表明,与现有 方法相比,流缓存可以将科学应用的I/O带宽提高44%, 将大型语言模型的检查点/重启时间平均降低15.7%。
+1 简介
+在高性能计算中,许多应用程序表现出文件扫描I/O模式, 如前面的作品[7,8,49,56]所示。图1展示了这些I/O模式。 在每个I/O阶段,每个文件可以由一个进程(N-N模式)独立 访问,也可以由多个进程(N-1模式)共享。例如,科学应 用程序在加载初始数据、执行检查点/重启[43,50]或可视 化结果[15,31]时执行文件扫描。AI训练作业在加载数据 文件或执行检查点/重启时也会扫描文件[30,51]。
+*Corresponding author: gyzh@tsinghua.edu.cn
+图1:文件扫描的典型I/O模式。 文件扫描具有较低的数据重用率,因为不同的进程通常 会访问每个文件的不同部分,即使在N-1模式下也是如此。
+通过页面缓存缓冲的I/O在很多情况下用于文件扫描, 因为页面缓存可以透明地提供缓冲、数据聚合、I/O对齐 和预取。例如,现代HPC集群构建基于ssd的突发缓冲系 统[16,17,32,48,49]来快速吸收来自应用程序[25]的突发I/O 请 求 。 典 型 的 突 发 缓 冲 系 统 , 如 HadaFS[16]、Cray Datawarp[17]和GekkoFS[48],使用内核文件系统和页面 缓存来管理一个突发缓冲节点内的ssd。另一个例子是 Safetensors[4],这是一个广泛使用的机器学习检查点/重 启库,它使用缓冲I/O模式加载模型参数并写入检查点文 件。
+虽然缓冲I/O模式可以提供透明的缓存,但我们的研 究表明,在像NVMe [53] ssd这样的快速存储设备上使用 页面缓存进行文件扫描有两个性能问题。为了演示这些 问题,我们使用fio[6]基准进行了顺序I/O测试,模拟了最 直接的文件扫描工作负载。本实验中的内核页面大小为 4KB。
+首先,我们发现随着设备带宽的增加,缓冲I/O的可 伸缩性很差,限制了它在快速存储设备上的性能。我们 评估了在缓冲I/O模式下以4MB I/O大小访问10GB文件的 带宽,并通过将不同数量的Intel Optane 905p NVMe ssd盘 [20]聚合到RAID-0阵列中来改变设备带宽限制。通过比 较,我们用绕过内核页面缓存的直接I/O模式重复实验。 如图-所示
+USENIX Association 2024 USENIX Annual Technical Conference 1119
+
+
+图2:不同ssd盘个数的RAID-0阵列顺序I/O带宽。实验是在XFS上 进行的,但我们在其他文件系统(如Ext4和F2FS)上发现了类似 的趋势。
+ure 2中,缓冲I/O在一个SSD上的性能要优于直接I/O, 这要归功于页面缓存中的预读和写缓冲机制。然而,随 着存储设备的速度越来越快,缓冲I/O的性能几乎没有 提高。当ssd盘个数大于1时,读缓冲带宽增幅不超过 35%,写缓冲带宽增幅不明显。相反,在如此大的I/O规 模下,直接I/O可以获得更好的可扩展性。这个实验证 明了当前的页面缓存管理限制了缓冲I/O在文件扫描中 的可扩展性。
+尽管在本实验中,直接I/O在文件扫描方面表现出比 缓冲I/O更好的可扩展性,但我们认为文件扫描可以从 页面缓存中受益,原因有三。首先,对于读写工作负载 [42],小I/O的文件扫描在缓冲I/O模式下比直接I/O模式 下表现更好。这种改进归功于读工作负载的预取和读写 工作负载的I/O聚合。其次,页面缓存可以为写工作负 载缓冲数据,并进行异步回写,有效降低关键路径上的 I/O延迟。第三,当同时服务读和写请求时,由于对I/O 地址和大小[18]有严格的限制,使用直接I/O需要额外的 I/O对齐工作。
+其次,我们发现写密集型文件扫描的性能会受到后 台回写的显著影响。我们通过在一个30GB的文件上顺 序地发出缓冲写操作来证明这一点,在此期间内核触发 后台回写以限制内存脏比。如图3所示,缓冲写操作在 测试开始时可以实现相对一致的性能,因为内核回写线 程还没有被唤醒。然而,当后台回写处于活动状态时, 前台I/O带宽会受到显著影响,导致后台回写阶段的性 能下降31.7%。在快速存储时代的设备上,由于其丰富 的设备带宽,后台回写更加密集,从而导致
+图3:前台I/O请求和后台回写之间的干扰。
+显著降低了前台I/O性能。限制后台回写速率并不是一 个永久的解决方案,因为它会导致内存中脏页面的积累, 从而阻塞前台I/O请求。
+上述问题是由于工作负载特征和内核内页面缓存管 理的综合影响而产生的。文件扫描具有较低的数据重用 率,这导致了较高的页面缓存缺失率和内存脏比的快 速增长。一方面,当页面缓存丢失发生时,页面缓存会 在关键路径上分配空闲页面,而内核中与页面分配相关 的大量开销会影响前台I/O性能。另一方面,页面缓存 在页面粒度上维护脏状态,比如页面脏和回写。这种设 计会导致前台写操作和后台回写操作之间产生强烈的锁 争用,因为它们都操作共享索引XArray[54]。
+本文提出了一种高效的页面缓存管理系统StreamCac he,用于快速存储设备上的文件扫描工作。StreamCache 包括三种技术来解决上述问题。首先,设计了一种轻量 级的流跟踪方法,以顺序流的粒度来维护缓存页面的元 数据。其次,设计基于流的页面回收方法,根据跟踪的 流执行页面回写和驱逐,保持对前台I/O请求的干扰低。 最后,设计了一种两层内存管理方法,通过利用CPU缓 存局部性来加速页面分配。
+我们将StreamCache与原始内核页面缓存和FastMapcache进行比较。FastMap-cache将FastMap[36]的关键技 术集成到缓冲I/O堆栈中,这是一种针对快速设备的新 的内存映射I/O (MMIO)设计。FastMap-cache使用每核空 闲页列表管理自己的内存池,以增强页分配的多核可伸 缩性。此外,它通过设计专用的每核脏树来分离干净树 和脏树来索引脏页。然而,我们发现直接从全局空闲页 列表中分配每个页面并不能在缓冲I/O处理中提供良好 的CPU缓存本地性,并且专用脏树中仍然存在争用,因 为前台写和后台回写都需要获得自旋锁来修改脏树。
+1120 2024 USENIX Annual Technical Conference USENIX Association
+
+
+我们在XFS中实现了StreamCache和FastMap-cache, 并在真实世界和合成工作负载下进行了广泛的实验。实 验结果表明,与现有方法相比,StreamCache可以使科学 计算应用的I/O带宽提高44%,使大型语言模型的检查点/ 重启时间平均减少15.7%。
+2 背景与动机
+在本节中,我们首先介绍缓冲I/O的必要背景。然后,我 们分析了在快速存储设备上使用页面缓存进行文件扫描 时存在的可扩展性差、回写干扰高的问题。最后,我们 介绍了FastMap[36]最相关的工作,并分析了它不能完全 解决上述问题的原因。
+2.1 缓冲I/O和页面缓存
+缓冲I/O是一种文件I/O模式,它可以利用页面缓存透明 地提供缓冲、数据聚合、I/O对齐和预取。它被用于文 件扫描的许多场景,如HPC突发缓冲区中的本地存储管 理[16,17,48]和机器学习的检查点/重启库[4]。
+尽管缓冲I/O实现在不同的内核文件系统中有所不同, 但它们与页面缓存交互的方式大致相同。通过参考具有 代表性的内核文件系统(XFS[11]、Ext4[27]、F2FS[22]和 BtrFS[44])的源代码,我们将缓冲I/O的过程总结为以下 五个部分:
+图4:通过页面缓存的缓冲I/O过程。假设第0页和第64页最初位 于XArray中,并且第64页是脏的。在本例中,页面大小为4KB。
+I/O对齐和页面级处理。缓冲I/O的一个优点是应用程序 不需要显式地进行I/O对齐,即使块设备需要将I/O请求 对齐到一定大小(例如4KB)。这是通过内核中的I/O对齐 来实现的。对于访问一个文件内的逻辑范围[0fset, 0fset + length]的缓冲I/O请求,内核将其与页面大小(通常为 4KB)对齐,如图4所示。对齐后,内核按顺序处理对齐 范围内的每个页面。每个页都有一个页索引来描述它在 文件中的位置。
+页面索引。文件数据只有在被缓存到页面缓存后才能被 缓冲的I/O请求访问。Linux使用一种称为XArray[54]的 逐文件数据结构来按页面粒度索引缓存的数据。如图4 所示,XArray是一个由许多xa_node组成的树索引。每个 xa_node有三个主要字段:(1)指针字段,如存储指向目标 页面的指针的slot和parent,下一层xa_nodes或父xa_node; (2)索引字段,如shift和o f fset,用于在搜索某个页面时 确定槽中的目标指针;(3)标记字段,比如标记这个xa_ node的子树是否索引了任何脏页或回写页的标记。
+对于读写竞争,XArray使用RCU[28]锁来保证一致 性。每个xa_node中的主指针字段被标记为读侧临界区。 它提供了良好的查找性能,因为索引修改(例如插入新页 面或修改标记字段)永远不会阻塞索引读取(例如查找页 面指针)。但是,XArray仍然依赖自旋锁来保证写-写争 用的一致性,比如并发索引修改。
+页面分配和数据填充。如果在页缓存中没有找到被访问 的页,内核将分配一个空闲页并将其插入XArray和内核 LRU列表中。内核页面分配首先由每cpu页面列表[3]提 供服务,该列表的设计目的是保留少量的空闲页面,用 于频繁的页面分配和释放。如果每cpu页面列表中没有剩 余页面,内核将以批处理的方式从系统范围的伙伴分配 器[52]提供空闲页面。伙伴分配器以不同的顺序维护空 闲页面,每个页面都是一个由自旋锁[55]保护的双链表。 在分配页面之后,内核可能需要用来自设备的相关数据 填充它。
+数据复制。在获得所需的页面后,内核在用户空间和内 核空间之间复制数据。Buffered read(读)将数据从内核页 复制到用户内存缓冲区,Buffered write(写)以相反的方 向操作数据。
+Dirty ratio限制。内核监控内存脏比,并根据用户配置限 制其值。两个与内存脏比相关的可配置阈值
+USENIX Association 2024 USENIX Annual Technical Conference 1121
+
+
+在 这 个 过 程 中 发 挥 重 要 作 用 。 当 内 存 脏 比 超 过 dirty_ background_ratio时,内核会唤醒后台回写线程,将脏页写 回来。当内存脏比超过dirty_ratio时,内核会阻塞缓冲写, 以限制内存脏比的增长率。
+2.2 缓冲I/O的性能问题
+虽然使用缓冲I/O模式进行文件访问很方便,但我们发现 使用缓冲I/O模式运行文件扫描工作负载存在性能问题, 特别是在高性能NVMe SSD上。本节分析文件扫描工作负 载下缓冲I/O可扩展性差、后台干扰高的问题。
+我们使用fio[6]基准来模拟最简单的文件扫描工作负载, 即在缓冲I/O模式下顺序读取或写入一个文件。测试的工 作负载包括顺序读工作负载、顺序写工作负载和具有活动 后台回写的顺序写工作负载。每个工作负载操作一个 10GB的XFS文件。XFS的块设备是一个由8个NVMe SSD 组成的RAID-0阵列,它模拟了下一代高性能NVMe SSD。 在第三个工作负载中,我们通过将dirty_background_ratio 设置为0,让内核主动刷新脏页,这样可以更清晰地展示 后台回写的干扰。
+图5:缓冲I/O的CPU占用细分。 对于每个工作负载,我们使用性能分析工具perf[5]来 捕获缓冲I/O的CPU占用分解。图5给出了每个测试的CPU 周期分解。从实验中我们可以得到三个结论。
+首先,页面分配(allocation)在三种工作负载中占据主 要时间,所占比例分别为33.45%、36.06%和24.09%。这 一结果表明,高页面分配开销显著地导致了缓冲I/O的可 扩展性差,特别是对于没有回写干扰的缓冲读和缓冲写。 文件扫描工作负载中重用数据的比例很低,导致
+页面缓存丢失率很高。值得一提的是,内核需要为每一个 页面缓存缺失分配一个空闲的页面。 从Linux的页面分配器进行分配可能会引入三个开销。 首先,空闲页是按不同的顺序维护的。一个k阶的页包含 2k个物理上连续的基本页。当低阶页面用完时,引入页面 分割开销,为低阶页面提供高阶页面[55]。其次,在受自 旋锁保护的相同双链表中维护相同顺序的页面,当不同的 CPU内核以并行[55]方式分配空闲页面时,这可能会导致 并发瓶颈。第三,可以将内核配置为通过将所有字节写入 零来清理分配时的页面,这会带来额外的CPU开销。
+其次,后台回写增加了前台I/O请求中的页面索引和脏 状态维护开销。缓冲写不直接与设备交互(即在写工作负载 中没有device部分),因为页面缓存缓冲了新写的数据。然 而,两个写工作负载之间的比较表明,后台回写增加了索 引和脏化的比例。脏化指的是改变脏状态的操作,比如内 核页缓存中的XArray标记字段。脏状态对于有效地定位脏 页面进行回写并确保这些页面在fsync命令下同步到外部存 储非常重要。对于没有主动回写的写工作负载,索引和脏 的比例分别为14.53%和4.03%(绝对时间分别为0.42s和0. 12s)。而在后台主动回写情况下,其比例分别上升至24.51% 和14.67%,绝对次数分别上升至1.16秒和0.7秒。
+进一步的调查表明,这种干扰源于XArray中的自旋锁 争用。理想情况下,回写一个脏页只需要一个XArray搜索 来获得一个指向该页的指针,并且这个XArray搜索不需要 在RCU机制下获得自旋锁。但是,XArray耦合了页面索引 和脏状态维护,因此回写操作必须获得XArray自旋锁才能 更改xa_nodes的标记字段。在回写期间,页面的状态会从 “脏”过渡到“回写”,最后再过渡到“干净”。在此过 程中,将反复获取和释放XArray自旋锁,以更改xa_nodes 中的脏标记和回写标记。上述问题在文件扫描工作负载中 更为严重,因为其重用数据的比例较低,导致内存脏比迅 速增加,并触发后台回写。
+最后,在用户空间缓冲区和内核空间页面之间复制数 据的成本很高。然而,在本工作中,我们没有对这部分进 行优化,因为用户空间和内核空间之间的数据复制对于缓 冲I/O模式是必要的。
+2.3 FastMap中的Page Cache Management
+与本文最相关的工作是FastMap[36],它优化了快速存储设 备上的内存映射I/O。With
+1122 2024 USENIX Annual Technical Conference USENIX Association
+
+
+图6:StreamCache的架构和工作流程
+关于第2.2节中的两个问题,FastMap中的两种技术可能 会有所帮助。然而,我们的分析表明,这些技术不足以 利用下一代存储设备在文件扫描工作负载下的性能。
+首先,FastMap分配一个专用内存池来加速页面分配。 零阶空闲页面被提前分配,并在每核双链表中进行维护。 当多个CPU内核并行分配空闲页面时,这可以避免分页 拆分的开销,并降低访问空闲页面列表时的锁争用。然 而,由于每个页面分配都是直接从系统范围的空闲页面 列表中获得的,我们发现对于带宽要求很高的应用程序 来说,它的缓存效率并不高。
+其次,对于回写干扰问题,FastMap通过维护专用脏 树将脏页索引从干净页索引中分离出来。这样,FastMap 就不需要维护脏标签来定位脏页面。此外,FastMap将页 面分散到每个核心的页面索引中,以降低并发访问下的 冲突。然而,将脏页与干净页分开只会消除插入干净页 和弄脏现有干净页之间的锁争用。当前台I/O操作弄脏页 面时,后台线程同时执行回写,因为它们都操纵脏树, 这仍然存在冲突。
+3 StreamCache概述
+本文提出了一种高性能的页面缓存管理系统StreamCache, 用于文件扫描工作负载,以更好地利用下一代NVMe ssd 的带宽。图6展示了StreamCache的架构和工作流程。
+设计原理。StreamCache由三个模块组成,用于解决2.2节 中分析的问题。 首先,提出了一个轻量级流跟踪模块,用于在顺序 流粒度上维护缓存页面的脏状态。对于每个打开的文件, StreamCache维护一个流跟踪树,并在缓存的I/O请求到达 时更新树。此外,当I/O模式是高度顺序的时,StreamCac he保留一个流指针来降低流跟踪开销。所有流都维护在 两个系统级流LRU列表中,用于页面回写和退出。
+其次,提出了一个基于流的页面回收模块来执行页 面回写和回收。StreamCache有一个内核线程池,利用流 跟踪模块快速定位脏页进行回写。然后,可以从XArray 中提取这些脏页的指针,而无需获得自旋锁,从而降低 了对前台I/O请求的干扰。此外,StreamCache使用每个文 件的回写计数器进行文件同步。当StreamCache检测到空 闲页面数量不足时,它利用基于流的回收来回收干净的 页面。
+第三,提出了一个两层内存管理模块来实现快速的 页面分配。StreamCache有一个系统级内存池,它在每核 双链表中维护零顺序的空闲页面。在内存池之上, StreamCache进一步设计了每个文件缓存,以便为带宽要 求高的应用程序从内存池中批量分配页面。
+每个模块的组件可以分为系统级实体和逐文件实体。 系统级实体由所有打开的文件共享,以提供全局视图和 资源池。每个打开的文件也有自己的per-file实体来维护 本地数据结构。
+USENIX Association 2024 USENIX Annual Technical Conference 1123
+
+
+StreamCache中缓冲的I/O堆栈。在图6中,实线箭头表 示Stream-Cache中重用的页面缓存工作流。粗体箭头是 StreamCache引入的新工作流。在执行页面迭代之前, 每个请求获得其访问的逻辑范围的范围锁,并更新流跟 踪模块。然后,请求遍历被访问的页面,并像页面缓存 一样顺序处理它们。如果在XArray中没有找到目标页, StreamCache将从两层内存管理模块中分配一个空闲页。 当所有的页面都被处理完后,请求会释放范围锁。
+4 关键技术
+本节介绍了StreamCache关键模块的详细设计,以及它 们如何优化后台回写干扰和页面分配开销。
+4.1 轻量级流跟踪
+轻量级流跟踪模块的目标是在流粒度上维护缓存页面的 元数据,包括干净的和脏的。它基于一个观察,即典型 文件扫描工作负载的缓存页面可以聚合成连续的逻辑范 围,这些范围比单个页面大得多。在流粒度上维护缓存 页面的脏状态使内核后台线程能够快速定位要回写的页 面,与维护页面级脏状态的现有方法相比,降低了对前 台I/O请求的干扰。
+流跟踪是以每个文件的方式完成的,因为在整个系 统中混合I/O请求可能会模糊每个文件内的简单I/O模式。 每个文件通过将连续的页面索引合并到流中来记录其缓 存数据的页面索引。流作为键值对存储在称为流跟踪树 (stream tracking tree, STT)的基于每个文件b树的数据结 构中。流的键是它的起始页索引,考虑到按顺序扩展流 只会增加它的结束页索引。这种设计可以避免频繁的 STT修改,特别是在文件扫描工作负载下。流的值是指 向其流描述符的指针。所有处于有效STT状态的流都保 证没有交集。图7给出了一个STT的示例。
+流描述符包含几个用于描述流的字段。地址范围 [start, end)记录了流的起始页和结束页索引。脏范围 ([dirtystart,dirtyend)记录该地址范围内脏页面索引。如 果一个流有一个有效的脏范围,那么它就是脏的。这些 范围字段由每个流自旋锁保护,用于前台和后台操作操 作的并发修改。此外,每个流都有一个upper_limit字段, 表示其下一个流的起始页索引。如果一个流没有后续流, 则upper_limit设置为infinite。
+图7:流跟踪树和流元数据示例。
+对于每个缓冲的I/O请求,STT将其页面索引范围与 现有流合并,以保持它们不相交。我们设计了一种算法, 以O(log n)复杂度搜索每个相交流,其中n为STT中的流 数。考虑到流的数量在文件扫描工作负载中是有限的, 这种搜索只引入了mini -nor开销。当将I/O与现有流合并 时,派生的地址和脏范围是先前范围的并集。当合并具 有相交地址范围的流时,它们的脏范围可能不相交。在 这种情况下,STT将合并的地址范围分成两个流,每个 流维护一个脏范围。由于合并后的流仍然可能与STT中 的其他流相交,因此上述过程是递归地执行的。
+StreamCache进一步引入了一个stream_pointer来降 低顺序I/O的STT搜索开销。如图7所示,stream_pointer 是一个逐文件指针,指向该文件上最后一个I/O请求所 属的流。考虑到文件扫描工作负载的I/O模式是高度顺 序的,stream_pointer提供了一个“缓存”来加速I/O跟 踪。对于每个I/O请求,首先检查stream_pointer,看请 求的起始页索引是否落在缓存流(称为流命中)的[start, end]范围内。流命中可以消除STT搜索的需要。否则, 这个I/O请求会导致流丢失,在这种情况下,StreamCac he将执行正常的流跟踪,并将stream_pointer更新到新访 问的流。
+在STT中,有些流的起始页索引可能大于缓存流的 结束页索引。在这些流中,起始页索引最小的流称为缓 存流后面的流。在不引用STT的情况下扩展缓存流可能 会导致缓存流与其后面的流相交。StreamCache引入了 一个逐流上限字段来解决这个问题。当一个流成为缓存 流时,它的下一个流的起始页索引被记录在这个字段中。 每个流命中只需要参考upper_limit来决定扩展的缓存流 是否会与其后续流相交
+1124 2024 USENIX Annual Technical Conference USENIX Association
+
+
+流而不搜索STT。 在upper_limit范围内扩展缓存流不会违反非相交属 性,因为对STT的修改是由自旋锁序列化的。然而,有 一个假阳性的情况,即缓存流的upper_limit字段小于下 一个流的实际起始页索引,这是由于后台页面被清除 (参见第4.2节)。这种情况不会违反非相交属性,只是引 入了可能不必要的STT搜索。考虑到它在文件扫描工作 负载中的稀有性,它对性能的影响很小。
+最后,我们讨论STT一致性。如上所述,同一文件 上的I/O请求的流跟踪由自旋锁序列化。这不会引起高 争用,因为:(1)许多文件扫描工作负载的I/O大小远远大 于一个页面(例如并行应用程序[9]中的数百KB),并且 跟踪每个I/O只需要获得一次自旋锁。(2)许多内核文件 系统用索引节点锁序列化缓冲的写操作,这会降低应用 程序级别的并发性[21,29]。然而,在I/O粒度上对页脏 状态进行批量更新并不是没有成本的。它使STT和 XArray之间的脏状态最终保持一致,因为STT在页面被 脏之前被更新。鉴于此,StreamCache实现了每个文件 范围锁管理器来同步前台I/O请求和后台回收同一页面 范围。缓冲I/O模式下的I/O跟踪和页面访问应该在相对 范围锁内执行。
+4.2 基于流的页面回收
+StreamCache采用基于流的页面回收方法。它在流粒度 上维护页面回写和回收的顺序,并保持多个回收线程在 后台运行。
+图8显示了Stream-Cache中的系统级LRU列表。所有 stt中的脏流被链接在一个称为脏流列表的双链表中。同 样的,所有的流,无论是否脏流,都被链接到另一个称 为流列表的双链表中。StreamCache将更新聚合到LRU 列表以降低维护开销。如果另一个流由于流丢失而成为 缓存流,则流立即更新其在LRU列表中的位置。
+基于系统级LRU列表,StreamCache可以通过一次 搜索找到一束目标页面来有效地执行回写和删除。这可 以降低对前台I/O请求的干扰。
+页面回写。与Linux内核一样,StreamCache在满足特定 条 件 时 ( 例 如 , 内 存 脏 比 达 到 StreamCache 中 的 dirty_ background_ratio)回写脏页。与Linux内核的主要区别在 于,StreamCache不依赖于XAr-ray中的标记字段来定位 脏页。取而代之的是回收线程
+图8:系统级LRU列表和基于流的页面回收。
+遍历系统级脏列表,找到要回写的脏流。对于每个遍历 的脏流,回收线程挑选一个脏页范围,并尝试获取该范 围上的范围锁。如果获得范围锁,回收线程将提交相关 页面的回写,缩小脏范围(如果所有脏页都被回写,可 能会从脏流列表中删除该流),并释放范围锁。否则, 它会重复上述过程,直到成功为止。StreamCache为页 面回写发出异步I/O。在向块设备提交写请求后,回收 线程完成回写并释放范围锁。
+当像fsync这样的文件同步命令被调用时,StreamCa che回写文件STT中的所有相对脏页。每个文件的回写计 数器用于指示回写完成,而不需要在XArray中操作回写 标记。当一个回收线程提交一个I/O来写nr个脏页时,它 会自动增加nr个回写计数器。在I/O完成回调函数中,相 关的回写计数器是死的。如果所有相关的脏页都提交回 写并且回写计数器变为0,那么fsync和fsync_range等文 件数据同步操作可以返回。
+在回写期间,StreamCache仍然需要从带有页面索 引 的 XArray 中 提 取 目 标 页 面 的 指 针 。 然 而 , 由 于 StreamCache将脏状态维护与XArray解耦,后台回写只 需要获得RCU读锁来进行页面搜索,而不是RCU写锁 (即XArray自旋锁)。当前台I/O请求需要一个写锁来插入 新页时,这种设计将写争用转化为读写争用,带来了很 大的好处,并且RCU机制可以有效地处理读写争用。 FastMap通过将脏页记录在独立的数据结构中进行了类 似的优化,但它无法解决后台的干扰问题,因为前台写 和后台回写都需要一个写锁来修改相同的脏页索引。
+USENIX Association 2024 USENIX Annual Technical Conference 1125
+
+
+页面删除。当StreamCache检测到空闲页面数量不足时, 它使回收线程沿着系统级流列表进行页面回收。像页面缓 存和FastMap一样,StreamCache只会清除干净的页面以避 免回写阻塞。脏流也会被遍历,因为它们的脏范围可能不 等于它们的地址范围,这表明流中包含有资格被驱逐的干 净页面。与页面回写不同,当STT用起始页索引索引每个 流时,当流的第一页被驱逐时,页面驱逐将改变STT。
+4.3 两层内存管理
+StreamCache使用两层内存管理模块来管理空闲页面,以 减轻高页面分配开销。图9给出了该模块的主要组件。它 包含一个系统级内存池来管理大部分空闲页面。每个文 件缓存的设计是为了加速带宽要求高的应用程序的页面 分配。
+图9:StreamCache中的两层内存管理。
+内存池由多个内存区域组成,每个内存区域在加载 StreamCache内核模块时分配预设数量的零顺序页面。内 存区域的数量等于机器中物理核的数量。管理员可以在 运行时调整总池大小。内存区域用双链表和每个区域的 自旋锁来维护空闲页面。空闲页列表不会引入额外的内 存开销,因为它们重用了Linux页描述符的LRU字段。
+在内存区域之上,StreamCache进一步设计了每个文 件缓存,以便在文件本地列表头中存储少量空闲页面。 当文件第一次打开时,StreamCache将为它分配一个每个 文件的缓存。此文件上的所有页面缓存缺失将从相对的 每个文件缓存中分配空闲页面。如果每个文件缓存在页 面分配时为空,StreamCache尝试以批处理方式从一个内 存区域分配low_mark(默认为50)空闲页面。目标内存区域 由应用程序当前运行的CPU核心ID决定。如果首选内存 区域没有足够的空闲页面,StreamCache将遍历其他内存 区域以窃取空闲页面,直到分配了low_mark页面,或者 在StreamCache遍历一次所有内存区域后,如果分配仍然 失败,则等待页面退出。
+图10:内存池和逐文件缓存的分配性能。
+我们发现,与仅使用内存池的解决方案(如FastMap中 的内存管理)相比,每个文件缓存在优化带宽要求高的工 作负载方面起着关键作用。我们对这两种内存分配方法进 行了两个实验来证明这一点。首先,我们测试了从内存池 中为不同批大小的每个文件缓存分配空闲页面的平均时间。 对于每个批大小,我们重复分配1024次,并计算平均时间。 如图10(a)所示,在64以内,分配时间并没有随着批大小 的增加而快速增长。这是因为,尽管在本实验中不存在争 用,但分配开销主要是通过引用系统级空闲页面列表来进 行页面分配。第二,我们执行另一个测试,分别使用每个 文件缓存和内存池重复200次页面分配。图10(b)展示了每 个页面分配的时间。如图所示,尽管由于从内存池中批量 分配,每个文件缓存每分配50次就会出现延迟峰值,但它 可以在其他时间实现相对较低的分配延迟。这是因为每个 文件缓存的本地空闲页列表可以嵌入到经常使用的每个文 件实体中,从而提供比内存池更好的CPU缓存命中率。
+两层内存管理模块使用全局内存标志来控制页面的清 除。选择一个后台回收线程定期遍历所有内存区域,对剩 余的空闲页面进行计数,并根据空闲页面比率设置全局内 存标志。StreamCache使用threshold_low和threshold_urgent 进行内存管理。如果空闲页面比率低于threshold_low但高 于threshold_urgent,则全局内存标志设置为“low”,以 便所有回收线程开始从系统级流LRU列表中驱逐页面。如 果空闲页面比率进一步低于threshold_urgent,则将该标志 设置为“urgent”,以便所有回收线程将额外将所有每个 文件的缓存缩小一半,并将这些页面回收到内存池中。这 可以在不同文件之间快速重新平衡空闲页面。
+被驱逐的页面被放入相关的每个文件缓存中,以备 潜在的重用。每个每个文件缓存都有一个high_mark来限 制它可以保留的空闲页面的数量。StreamCache设置
+1126 2024 USENIX Annual Technical Conference USENIX Association
+
+
+High_mark必须是low_mark的两倍。StreamCache通过将页 面清理操作从分配移到回收来进行进一步优化。Linux内 核可以配置为在分配时清理页面,例如将页面中的所有字 节设置为零。由于StreamCache中的内存池管理,所有页面 都可以在驱逐时被清理,从而节省了分配关键路径的清理 成本。
+5 实现
+我们将XFS[11]中的默认页面缓存替换为流缓存,并将其 编译为一个新的内核模块。要使用流缓存,用户需要使用 XFS格式化工具[24]格式化块设备,并将该设备挂载到某 个目录。对该目录中文件的缓冲I/O请求将由StreamCache 处理。
+StreamCache的设计与XFS不耦合,可以集成到其他文 件系统中。为了简化这些新的实现,StreamCache函数根 据它们插入的位置被分为三种类型:
+模块级函数。模块级函数在内核模块生命周期内只运行一 次。它们被插入到模块初始化和退出函数中,并在调用 insmod 和 rmmod 命 令 时 生 效 。 在 模 块 初 始 化 期 间 , StreamCache启动其核心模块并分配全局数据结构。内存池 在这个阶段初始化,从内核分配空闲页面。StreamCache还 在这个阶段启动了一些后台回收线程,用于页面回写和退 出。退出函数做相反的事情。
+文件级函数。文件级函数在打开或关闭文件时调用。这些 函数主要用于分配和回收每个文件的实体。在缓冲I/O请求 处理期间,StreamCache可能经常引用每个文件实体,例如 在I/O跟踪期间访问STT,或者在页面缓存丢失时从每个文 件缓存中获取空闲页面。StreamCache维护一个并发友好的 哈希表,将文件inode ID映射到它的每个文件实体。当一 个文件被多次打开时,多个应用程序可能会共享一个每个 文件实体,当没有相对的每个文件实体存在时,一个新的 实体被分配。StreamCache与内核页面缓存保持相同的语义, 即当所有应用程序关闭文件时,缓存的页面不会被回写或 立即驱逐。后台回收线程将定期对零引用文件的缓存数据 进行页面回写和驱逐。
+I/ o级功能。在每次I/O请求期间调用I/o级函数。这些函数 包括I/O跟踪,获取/释放范围锁和页面缓存未命中的页面 分配。一些操纵页面缓存的后
+台操作也需要调用I/ o级函数,比如当内核[2]检测到顺序 访问模式时的异步预读。这些函数也应该由STT跟踪,以 提供StreamCache中缓存页面的整体视图。
+6 性能评估
+我们的评估试图回答以下问题: •StreamCache如何执行现实世界的文件扫描工作负载?(§ 6.1)
+•在不同的参数设置下,StreamCache在合成工作负载下的 性能如何?(§6.2)
+•StreamCache使用的个别技术的影响是什么?(§6.3)
+•当I/O工作负载不是文件扫描时,StreamCache中的流跟 踪将引入多少开销?(§6.4)
+平台。我们在一台由32核AMD Rome EPYC 7542 CPU和 128GB DDR4内存组成的服务器上进行实验,运行Ubuntu 18.04和Linux内核版本5.4。该服务器可以并行支持10个 PCIe 4.0设备。
+为了进行评估,我们使用8个英特尔Optane SSD[20], 与第2节中的动机测试相同。在我们的平台中,我们测量 每个SSD可以提供2581MB/s的顺序读带宽和2179MB/s的顺 序写带宽,非常接近[20]规范。为了模拟未来的高性能 NVMe SSD,我们使用Linux md (Multiple Devices)将这些 SSD聚集到一个具有64KB块大小的RAID-0阵列中。原始 设备测试显示,我们的平台可以实现19558.4MB/s的聚合 读带宽和14745.6MB/s的聚合写带宽,接近聚合设备的极 限。除非另有说明,否则将在此8 ssd阵列上执行以下测试。 我们在6.2节中评估了不同设备带宽的影响。
+页面缓存管理方法。
+我们比较Stream
+使用原始内核页缓存和FastMap-cache进行缓存。由于应用 程序不能直接与页面缓存交互,我们使用不同的页面缓存 管理方法在XFS上执行所有测试,以下简称为页面缓存, FastMap-cache和StreamCache。由于FastMap[36]是为内存 映射I/O设计的,我们根据论文和它的源代码[10]在XFS中 实现了它分离的干净树和脏树以及专用的DRAM缓存。
+USENIX Association 2024 USENIX Annual Technical Conference 1127
+
+
+I/O工作负载。评估是在真实工作负载和合成工作负载 上执行的。对于现实世界的工作负载,我们在大语言模 型(LLM)中测试了科学计算的I/O性能和检查点/重启, 这些都是典型的文件扫描工作负载。此外,我们使用fio [6]作为微基准来评估StreamCache在各种参数下的性能。
+FastMap-cache 和 Stream-Cache 的 内 存 池 大 小 都 是 64GB。在评估页面缓存时,我们使用cgroup[1]将内存 使用限制为64GB。一个例外是,对于LLM I/O测试,我 们不限制内存使用,因为应用程序本身使用了不可忽略 的内存量,并且cgroup计算用户空间内存和内核页面缓 存的内存使用情况。在所有测试中,当最大可用页面的 10%变脏时,会触发后台回写,这与Linux中的默认值相 同。在每次测试之前,我们都会删除所有缓存的页面, 以排除它们的影响。
+6.1 真实应用程序的性能
+科 学 计 算 。 我 们 使 用 PF3DIO [26] I/O 内 核 来 测 试 StreamCache在并行应用程序下的行为,认为它是突发 缓冲区中本地存储管理的解决方案[16,17,32]。I/O内核 提取科学应用的I/O模式,被广泛用于测试HPC文件系 统性能[16,32,49]。PF3DIO源自劳伦斯利弗莫尔国家实 验室(LLNL)开发的激光等离子体模拟应用程序。它包含 六种工作负载,以不同的格式写入检查点文件。我们在 小问题规模和大问题规模两种情况下测试了这些工作负 载。每个工作负载的总检查点文件大小如表1所示。
+表1:PF3DIO工作负载的检查点文件总大小。
+图11:PF3DIO科学计算的I/O性能
+如图11所示,在不同的工作负载下,StreamCache 的性能始终优于其他两个系统。前四种工作负载主要写 浮点数的大型数组,其中两个(scdir和scpdb)
+在每个数组之后额外写一些标量浮点数。这些工作负载 主要由大型顺序I/O请求组成,与现有的最佳方法相比, StreamCache提供了28%-62%的改进。multi和smulti工作 负载有许多小的未对齐I/O请求,使其带宽低于其他工 作负载。然而,StreamCache仍然可以提供26%-48%的 改进。这是因为这些工作负载的页面缓存缺失率很高, 需要频繁地分配空闲页面,而Stream-Cache中的两层内 存管理可以提供比其他两种方法更快的页面分配。
+较大的问题规模会使检查点文件变大,触发后台回 写,降低前台I/O性能。然而,由于StreamCache中基于 流的页面回收,后台对前台I/O性能的干扰比其他两种 方法要小。比较图11(a)和图11(b),可以看到StreamCach e在大问题规模(平均53%)上比在小问题规模(平均35%) 上提供更大的改进。
+图12:LLM检查点和重启性能。 大型语言模型。先前的研究[30,51]表明,检查点/重启(C/ R)在机器学习中引入了很高的开销,特别是在大型模型 中。我们通过测试两个大型语言模型(ChatGLM-6B[46] 和OPT-13B[13])的C/R性能来演示StreamCache如何提高 LLM训练。
+图12展示了不同页面缓存管理方法下的检查点/重启 时间。ChatGLM-6B和OPT-13B的总检查点大小分别为 12GB和24GB,在检查点过程中触发后台回写。因此, 我们观察到两种模型的检查点时间都比重启时间长。尽 管存在这种背景干扰,StreamCache可以将这两种模型 的检查点时间分别减少15%和12%,这要归功于它更快 的页面分配和基于流的页面回收。此外,StreamCache 可以将这两种模型的重启时间分别减少19%和17%,这 主要是由于它更快的页面分配。
+1128 2024 USENIX Annual Technical Conference USENIX Association
+
+
+图13:合成工作负载下的I/O性能。
+6.2 合成工作负载下的性能
+我们使用fio基准来生成合成工作负载,并评估StreamCac he在不同I/O参数下的性能,包括不同的I/O大小、总文 件大小、并行性和设备带宽。
+不同的块大小。图13(a)和图13(d)给出了访问不同块大小 的1GB文件的带宽。由于优化了内存管理,FastMapcache和StreamCache在读取工作负载下的性能都优于页 面缓存。此外,StreamCache比FastMap-cache实现更高的 带宽,因为它的每个文件缓存可以批量分配页面。对于 写工作负载,FastMap-cache的性能并不比页面缓存好。 这是因为FastMap-cache需要访问多个脏树来记录脏页, 这会导致比在顺序I/ o下只操作一个树(如页缓存所做的 那样)更糟糕的缓存位置。
+不 同 的 文 件 大 小 。 图 13(b) 和 图 13(e) 给 出 了 块 大 小 为 256KB时访问不同大小文件的带宽。对于读工作负载, 虽然FastMap-cache在小文件上可以获得更好的性能,但 其带宽随着文件大小的增加而下降。这是因为它将系统 内存划分为32个(物理核数)的自由页列表,当首选的自 由页列表页面用完时,会产生内存窃取开销。这个问题 也会影响StreamCache中的页面分配,但是per
+filecache会批量页面分配并分摊这个开销。在32GB文件 大小时,所有方法的写带宽都会下降,因为高脏页比率 会触发后台回写。然而,由于其基于流的页面回收, StreamCache实现了比页面缓存和FastMap-cache更低的前 景性能下降。 不同的并行性。图13(c)和图13(f)显示了不同数量的进程 的聚合I/O带宽,每个进程访问一个1GB的文件,块大小 为256KB。虽然使用一个进程时FastMap-cache的读性能 优于页面缓存,但是当进程数量增加时,它的性能增长 速度比页面缓存慢。这是因为页面缓存可以批处理从好 友系统中分配的每cpu页面列表。StreamCache具有最佳 性能,因为它不仅消除了页面分割开销,降低了与内存 池的多进程争用,而且还使用每个文件缓存批量分配页 面。页面缓存的写性能下降到16个进程以下,因为高并 行性加速了内存脏比率的上升,并触发后台回写。由于 优化了索引设计,FastMap-cache和StreamCache在16个进 程下都没有看到性能下降。
+不同的设备带宽。上述实验表明,StreamCache可以提高 高带宽存储设备上文件扫描工作负载的性能。在这一部 分中,我们评估了StreamCache的性能
+USENIX Association 2024 USENIX Annual Technical Conference 1129
+
+
+图14:设备带宽的影响。 随着设备带宽的变化。
+我们通过构造具有不同数量NVMe ssd的RAID-0阵 列来模拟不同带宽的存储设备。图14给出了在大文件 (10GB)上运行fio基准测试的结果。对于读工作负载, 由于预读机制,所有三种方法都可以在一个SSD上接近 设备带宽限制(2.5GB/s)。然而,随着设备变得更快, StreamCache可以更好地利用快速设备,因为它的快速 页面分配。写工作负载的带宽不会随着设备带宽的增加 而改变,因为数据被缓冲在内存中。StreamCache由于 其快速的页面分配和更低的后台回写干扰而获得更好的 性能。当文件大小较小时,我们观察到类似的趋势。
+6.3 个人技术的效果
+为了隔离StreamCache关键技术带来的改进,我们以大 问题规模的PF3DIO为例,逐步增加三种技术来测试性 能。
+图15:单个技术的效果。 图15显示,设计专用内存池可以提高某些工作负载 (如scdir和scpdb)的性能,因为内存池可以消除分页拆分 的开销,并减少空闲页面列表上的多进程锁争用。然而, 在一些主要由大型I/O请求(如dir和pdb)组成的带宽要求 较高的工作负载中,与页面缓存相比,以页面粒度从 内存池中进行定位可能会损害性能。使用内存池平均只 能带来1.3%的提升。
+添加流跟踪模块和基于流的页面回收,平均还能带 来21.3%的提升。这是因为大的问题规模在检查点期间 触发后台回写,并且基于流的页面回收将脏状态维护与 XArray中的页面索引解耦。这降低了后台对前台I/O请 求的干扰,提高了整体性能。
+最后,添加逐文件缓存可以额外带来27.5%的改进, 因为它从内存池中批量分配页面,提供了良好的缓存局 域性,并降低了并行文件I/O请求下内存池中的争用。
+6.4 流跟踪开销
+图16:随机I/O请求下的流跟踪开销。
+最后,还有一个问题是,当工作负载不是顺序的时 候,StreamCache中的流跟踪是否会带来显著的开销。 我们使用fio来比较不带流跟踪和带流跟踪的XFS之间的 随机I/O性能。如图16所示,在随机I/O请求下,流跟踪 只会带来较小的开销。这是因为流跟踪是在I/O粒度上 完成的,考虑到页面缓存处理在页面粒度上缓冲的I/O 请求,这种开销至少与XArray索引和页面复制的开销相 当。
+7 相关工作
+页面缓存管理。以往优化页面缓存管理的工作主要分为 两类。第一类旨在通过重新设计页面缓存索引[36,40,41] 或将脏页面记录在专用索引中[34-36],使页面缓存索引 对并发访问友好。然而,这些工作并没有解决前台I/O 请求和后台回写之间关于脏状态维护的争论。第二类侧 重于促进多个应用程序之间的性能隔离,提出了诸如每 个vm evic- evic列表[45]或用于缓冲的权重感知请求调度 等解决方案
+1130 2024 USENIX Annual Technical Conference USENIX Association
+
+
+I/O[37]。这些工作与StreamCache是正交的,它们的技术 可以集成到我们的系统中。 内核页面分配器。页面分配器是Linux内核中支持内存分 配的基本模块,分配开销对应用程序性能至关重要。 Linux内核使用伙伴系统来管理空闲页面,并提出每个cpu 的页面列表来批处理页面分配和释放[3]。一些作品通过 将空闲页面存储在多个双链表中来为页面缓存设计专用的 内存管理模块[23,36,47]。LLFree[55]抛弃了Linux内核中 基于列表的空闲页面管理,并使用位向量搜索来分配空闲 页面。StreamCache的不同之处在于,它为缓存友好的页 面分配设计了两层内存管理方法。
+设计用户空间缓存。一项研究[12]指出,透明内核页面缓 存可能不是数据库管理系统(DBMS)的最佳选择,一些研 究为DBMS设计了自己的用户空间缓存[38,39,57]。虽然用 户空间缓存允许方便的自定义,并且可以像SPDK[19]那 样利用用户空间I/O堆栈,但这种解决方案对于应用[14]来 说并不透明,并且缓存命中性能可能比内核缓存[33]更差。 Tricache[14]提供了一个透明的用户空间缓存,但它需要对 应用程序源代码进行编译时插装,并且在缓存命中情况下 的性能可能比内核页面缓存差。StreamCache与这些工作 的不同之处在于它不需要在应用程序上做任何额外的工作。
+8 结论
+在这项工作中,我们提出了一种新的页面缓存管理系统, 称为StreamCache,并在XFS中实现,以利用快速存储设备 的性能。StreamCache可以在各种文件扫描工作负载下提 高缓冲I/O请求的性能,其中有三个关键技术:轻量级流跟 踪、基于流的页面回收和两层内存管理。大量的实验表明, StreamCache可以在实际应用程序和各种合成工作负载中 优于现有的页面缓存管理系统。
+确认
+我们感谢所有审稿人提出的有见地的意见和有益的建议。 本工作得到国家自然科学基金资助,基金号:62025203。
+参考文献
+[1] Cgroups. https://www.kernel.org/doc/Documentation/ cgroup-v1/cgroups.txt. Accessed on June 5, 2024.
+[2] Page cache readahead. https://www. halolinux. us/
+kernel-architecture/page-cache-readahead . html. Accessed on June 5, 2024.
+[3] Physical page allocation. https://www.kernel.org/doc/
+gorman/html/understand/understand009. html. Accessed on June 5, 2024.
+[4] Safetensors. https://huggingface. co/docs/safetensors/ index. Accessed on June 5, 2024.
+[5] Linux perf. https://perf. wiki. kernel. org/index. php/ Main_Page, 2023. Accessed on June 5, 2024.
+[6] Jens Axboe. Flexible I/O Tester. https://github.com/ axboe/fio. Accessed on June 5, 2024.
+[7] John Bent, Sorin Faibish, Jim Ahrens, Gary Grider,
+John Patchett, Percy Tzelnic, and Jon Woodring.
+Jitter-free co-processing on a prototype exascale
+storage stack. In 2012 IEEE 28th Symposium on
+Mass Storage Systems and Technologies (MSST ’ 12), pages 1–5, 2012.
+[8] John Bent, Garth Gibson, Gary Grider, Ben McClel
+land, Paul Nowoczynski, James Nunez, Milo Polte,
+and Meghan Wingate. PLFS: A checkpoint
+filesystem for parallel applications. In Proceedings
+of the Conference on High Performance Computing
+Networking, Storage and Analysis (SC ’09), pages 112, 2009.
+[9] Philip Carns, Robert Latham, Robert Ross, Kamil
+Iskra, Samuel Lang, and Katherine Riley. 24/7
+characteriza-tion of petascale I/O workloads. In
+2009 IEEE Inter-national Conference on Cluster
+Computing and Work-shops, pages 1–10. IEEE, 2009.
+[10] CARV-ICS-FORTH. Fastmap. https://github. com/
+CARV-ICS-FORTH/FastMap. Accessed on June 5, 2024.
+[11] Jonathan Corbet. XFS: The filesystem of the future? https://lwn.net/Articles/476263/, 2012.
+[12] Andrew Crotty, Viktor Leis, and Andrew Pavlo. Are
+you sure you want to use mmap in your database man-agement system? In CIDR, 2022.
+[13] Facebook. Opt-13B. https://huggingface. co/ facebook/opt-13b. Accessed on June 5, 2024.
+[14] Guanyu Feng, Huanqi Cao, Xiaowei Zhu, Bowen
+Yu, Yuanwei Wang, Zixuan Ma, Shengqi Chen, and
+Wen-guang Chen. Tricache: A user-transparent block cache
+USENIX Association 2024 USENIX Annual Technical Conference 1131
+
+
+enabling high-performance out-of-core processing with
+in-memory programs. In 16th USENIX Symposium
+on Operating Systems Design and Implementation (OSDI ’22), pages 395–411, 2022.
+[15] Jun He, John Bent, Aaron Torres, Gary Grider,
+Garth Gibson, Carlos Maltzahn, and Xian-He Sun.
+I/O acceler-ation with pattern detection. In
+Proceedings of the 22nd International Symposium
+on High-Performance Parallel and Distributed
+Computing (HDPC ’13), pages 25–36, New York,
+NY, USA, 2013. Association for Computing Machinery.
+[16] Xiaobin He, Bin Yang, Jie Gao, Wei Xiao, Qi
+Chen, Shupeng Shi, Dexun Chen, Weiguo Liu,
+Wei Xue, and Zuo-ning Chen. HadaFS: A file
+system bridging the local and shared burst buffer
+for exascale supercomput-ers. In 21st USENIX
+Conference on File and Storage Technologies (FAST ’23), pages 215–230, 2023.
+[17] Dave Henseler, Benjamin Landsteiner, Doug
+Petesch, Cornell Wright, and Nicholas J Wright.
+Architecture and design of cray datawarp. Cray User Group (CUG), 2016.
+[18] IBM. Considerations for the use of direct I/O (O_
+DIRECT). https://www.ibm.com/docs/en/spectrum
+scale/5.0.5?topic=applications-con siderations-usedirect-io-o-direct, 2022.
+[19] Intel. SPDK: Storage Performance Devlopment Kit. https://spdk.io/. Accessed on June 5, 2024.
+[20] Intel. Intel Optane SSD 905P series specification.
+https://www. intel. com/content/www/us/en/
+products/sku/147529/intel-optane-ssd-905p-s eries
+960gb-2-5in-pcie-x4-3d-xpoint/specif ications. html, 2018.
+[21] Chang-Gyu Lee, Hyunki Byun, Sunghyun Noh,
+Hyeongu Kang, and Youngjae Kim. Write
+optimiza-tion of log-structured flash file system for
+parallel I/O on manycore servers. In Proceedings
+of the 12th ACM International Conference on Systems and Storage, pages 21–32, 2019.
+[22] Changman Lee, Dongho Sim, Jooyoung Hwang,
+and Sangyeun Cho. F2FS: A new file system for
+flash stor-age. In 13th USENIX Conference on File
+and Storage Technologies (FAST ’15), pages 273
+286, Santa Clara, CA, February 2015. USENIX Association.
+[23] Viktor Leis, Adnan Alhomssi, Tobias Ziegler,
+Yannick Loeck, and Christian Dietrich. Virtual
+memory assisted buffer management. Proceedings
+of the ACM on Man-agement of Data, 1(1):1–25, 2023.
+[24] Arch Linux. xfsprogs. https://archlinux. org/
+packages/core/x86_64/xfsprogs/. Accessed on June 5, 2024.
+[25] Ning Liu, Jason Cope, Philip Carns, Christopher
+Carothers, Robert Ross, Gary Grider, Adam
+Crume, and Carlos Maltzahn. On the role of burst
+buffers in leadership-class storage systems. In 2012
+IEEE 28th Symposium on Mass Storage Systems
+and Technologies (MSST ’12), pages 1–11. IEEE, 2012.
+[26] LLNL. PF3DIO benchmark. https://github. com/ LLNL/PF3DIO. Accessed on June 5, 2024.
+[27] Avantika Mathur, Mingming Cao, Suparna Bhat
+tacharya, Andreas Dilger, Alex Tomas, and
+Laurent Vivier. The new ext4 filesystem: current
+status and future plans. In Proceedings of the Linux
+symposium, volume 2, pages 21–33. Citeseer, 2007.
+[28] Paul E McKenney and John D Slingwine. Read
+copy update: Using execution history to solve
+concurrency problems. In Parallel and Distributed
+Computing and Systems, volume 509518, pages 509–518, 1998.
+[29] Changwoo Min, Sanidhya Kashyap, Steffen Maass,
+and Taesoo Kim. Understanding manycore
+scalability of file systems. In 2016 USENIX Annual
+Technical Con-ference (USENIX ATC ’16), pages
+71–85, Denver, CO, June 2016. USENIX Association.
+[30] Jayashree Mohan, Amar Phanishayee, and Vijay
+Chi-dambaram. CheckFreq: Frequent, fine-grained
+DNN checkpointing. In 19th USENIX Conference
+on File and Storage Technologies (FAST ’21), pages 203–216, 2021.
+[31] National Energy Research Scientific Computing
+(NERSC) Center. Trinity / NERSC-8 Use Case
+Scenarios. https://www. nersc. gov/assets/Trinity-
+NERSC-8-RFP/Documents/trinity-NERSC 8-usecase-v1.2a.pdf, 2013. Accessed on June 5, 2024.
+[32] Yoshihiro Oyama Osamu Tatebe, Shukuko
+Moriwake. Gfarm/BB—Gfarm file system for node
+local burst buffer. Journal of Computer Science and Technology, 35(1):61, 2020.
+[33] Anastasios Papagiannis, Manolis Marazakis, and
+Ange-los Bilas. Memory-mapped I/O on steroids.
+In Pro-ceedings of the 16th European Conference
+on Computer Systems (EuroSys ’21), pages 277293, 2021.
+[34] Anastasios Papagiannis, Giorgos Saloustros, Pilar
+González-Férez, and Angelos Bilas. An efficient
+memory-mapped key-value store for flash storage.
+In Proceedings of the ACM Symposium on Cloud Comput-ing (SoCC ’18), pages 490–502, 2018.
+1132 2024 USENIX Annual Technical Conference USENIX Association
+
+
+[35] Anastasios Papagiannis, Giorgos Saloustros,
+Giorgos Xanthakis, Giorgos Kalaentzis, Pilar
+Gonzalez-Ferez, and Angelos Bilas. Kreon: An
+efficient memory-mapped key-value store for flash
+storage. ACM Transactions on Storage, 17(1):132, 2021.
+[36] Anastasios Papagiannis, Giorgos Xanthakis,
+Giorgos Sa-loustros, Manolis Marazakis, and
+Angelos Bilas. Opti-mizing memory-mapped I/O
+for fast storage devices. In 2020 USENIX Annual
+Technical Conference (USENIX ATC ’20), pages 813–827, 2020.
+[37] Jonggyu Park and Young Ik Eom. Weight-aware
+cache for application-level proportional I/O
+sharing. IEEE Transactions on Computers, 71(10): 2395–2407, 2021.
+[38] Ivy Peng, Marty McFadden, Eric Green, Keita
+Iwabuchi, Kai Wu, Dong Li, Roger Pearce, and
+Maya Gokhale. Umap: Enabling application-driven
+optimizations for page management. In 2019 IEEE/
+ACM Workshop on Memory Centric High
+Performance Computing, pages 71–78. IEEE, 2019.
+[39] Ivy B. Peng, Maya B. Gokhale, Karim Youssef,
+Keita Iwabuchi, and Roger Pearce. Enabling
+scalable and extensible memory-mapped datastores
+in userspace. IEEE Transactions on Parallel and Distributed Systems, 33(4):866–877, 2022.
+[40] Kiet Tuan Pham, Seokjoo Cho, Sangjin Lee, Lan
+Anh Nguyen, Hyeongi Yeo, Ipoom Jeong, Sungjin
+Lee, Nam Sung Kim, and Yongseok Son.
+Scalecache: A scalable page cache for multiple
+solid-state drives. In Proceedings of the 19th
+European Conference on Com-puter Systems (EuroSys ’24), pages 641–656, 2024.
+[41] Nick Piggin. A lockless page cache in linux. In Pro
+ceedings of the Linux Symposium, volume 2. Citeseer, 2006.
+[42] Yingjin Qian, Marc-André Vef, Patrick Farrell,
+Andreas Dilger, Xi Li, Shuichi Ihara, Yinjin Fu, Wei Xue, and André Brinkmann. Combining
+buffered I/O and direct I/O in distributed file systems. In 22nd USENIX Con-ference on File and Storage Technologies (FAST ’24), pages 17–33, 2024.
+[43] Raghunath Rajachandrasekar, Adam Moody, Kathryn Mohror, and Dhabaleswar K Panda. A 1 PB/s file system to checkpoint three million MPI tasks. In Proceedings of the 22nd international symposium on High-performance parallel and distributed computing (HPDC ’13), pages 143154, 2013.
+[44] Ohad Rodeh, Josef Bacik, and Chris Mason.
+BTRFS: The Linux B-tree filesystem. ACM Transactions on Storage, 9(3), aug 2013.
+[45] Prateek Sharma, Purushottam Kulkarni, and
+Prashant Shenoy. Per-vm page cache partitioning
+for cloud com-puting platforms. In 2016 8th
+International Conference on Communication Systems and Networks, pages 1–8, 2016.
+[46] THUDM. ChatGLM-6B. https://huggingface. co/ THUDM/chatglm2-6b. Accessed on June 5, 2024.
+[47] Brian Van Essen, Henry Hsieh, Sasha Ames, Roger
+Pearce, and Maya Gokhale. DI-MMAP—a scalable
+memory-map runtime for out-of-core data
+intensive ap-plications. Cluster Computing, 18:1528, 2015.
+[48] Marc-André Vef, Nafiseh Moti, Tim Süß,
+Tommaso Tocci, Ramon Nou, Alberto Miranda,
+Toni Cortes, and André Brinkmann. GekkoFS - A
+temporary distributed file system for HPC
+applications. In 2018 IEEE Inter-national
+Conference on Cluster Computing (CLUSTER ’18), pages 319–324, 2018.
+[49] Teng Wang, Kathryn Mohror, Adam Moody,
+Kento Sato, and Weikuan Yu. An ephemeral burst
+buffer file system for scientific applications. In
+Proceedings of the Inter-national Conference for
+High Performance Computing, Networking,
+Storage and Analysis (SC ’16), pages 807– 818, 2016.
+[50] Teng Wang, Sarp Oral, Michael Pritchard, Bin
+Wang, and Weikuan Yu. TRIO: Burst buffer based
+I/O or-chestration. In 2015 IEEE International
+Conference on Cluster Computing (CLUSTER ’15), pages 194–203, 2015.
+[51] Zhuang Wang, Zhen Jia, Shuai Zheng, Zhen
+Zhang, Xin-wei Fu, TS Eugene Ng, and Yida
+Wang. Gemini: Fast failure recovery in distributed
+training with in-memory checkpoints. In
+Proceedings of the 29th Symposium on Operating
+Systems Principles (SOSP ’23), pages 364– 381, 2023.
+[52] Wikipeida. Buddy memory allocation. https://en. wikipedia.org/wiki/Buddy_memory_allocation.
+Accessed on June 5, 2024.
+[53] Wikipeida. NVM Express. https://en.wikipedia.org/ wiki/NVM_Express. Accessed on June 5, 2024.
+[54] Matthew Wilcox. XArray. https://docs.kernel.org/ core-api/xarray.html. Accessed on June 5, 2024.
+[55] Lars Wrenger, Florian Rommel, Alexander Halbuer, Christian Dietrich, and Daniel Lohmann. LLFree: Scal-able and optionally-persistent pageframe allocation. In 2023 USENIX Annual Technical Conference (USENIX ATC ’23), pages 897–914, 2023.
+USENIX Association 2024 USENIX Annual Technical Conference 1133
+
+
+[56] Bin Yang, Xu Ji, Xiaosong Ma, Xiyang Wang,
+Tianyu Zhang, Xiupeng Zhu, Nosayba El-Sayed,
+Haidong Lan, Yibo Yang, Jidong Zhai, Weiguo Liu,
+and Wei Xue. End-to-end I/O monitoring on a
+leading supercomputer. In 16th USENIX Symposium
+on Networked Systems Design and Implementation (NSDI ’19), pages 379–394, 2019.
+[57] Karim Youssef, Niteya Shah, Maya Gokhale, Roger
+Pearce, and Wu-chun Feng. Autopager: Auto-tuning
+memory-mapped I/O parameters in userspace. In
+2022 IEEE High Performance Extreme Computing Confer-ence, pages 1–7. IEEE, 2022.
+1134 2024 USENIX Annual Technical Conference USENIX Association

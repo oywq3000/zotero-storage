@@ -1,0 +1,3 @@
+Object Detectors Emerge in Deep Scene CNNs
+Understanding the Effective Field in Deep Convolutional NeuralNetworks
+Context-Aware Single-khot Detector
